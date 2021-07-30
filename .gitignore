@@ -66,3 +66,6 @@ stamp-*
 /mpc*
 /gmp*
 /isl*
+
+# My builds
+mybuild/*

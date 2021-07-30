@@ -69,6 +69,23 @@
 
 #include <debug/assertions.h>
 
+#if _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE
+extern "C" void
+__sanitizer_annotate_contiguous_container(const void*, const void*,
+					  const void*, const void*);
+
+#ifndef SHADOW_SCALE
+#define SHADOW_SCALE (3U)
+#endif
+#ifndef SHADOW_GRANULARITY
+#define SHADOW_GRANULARITY (1UL << SHADOW_SCALE)
+#endif
+#ifndef SHADOW_MASK
+#define SHADOW_MASK (~(SHADOW_GRANULARITY - 1))
+#endif
+
+#endif // _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE
+
 namespace std _GLIBCXX_VISIBILITY(default)
 {
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
@@ -540,6 +557,354 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	: _Tp_alloc_type(std::move(__a)), _Deque_impl_data(std::move(__d))
 	{ }
 #endif
+#if _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE
+	template<typename = _Tp_alloc_type>
+	  struct _Asan
+	  {
+	    typedef typename __gnu_cxx::__alloc_traits<_Tp_alloc_type>
+	      ::size_type size_type;
+
+	    static void _S_shrink_front(_Deque_impl&, size_type) { }
+          static void _S_shrink_back(_Deque_impl&, size_type) { }
+	    static void _S_on_dealloc(_Deque_impl&) { }
+
+	    typedef _Deque_impl& _Reinit;
+
+	    struct _Grow_front
+	    {
+	      _Grow_front(_Deque_impl&, size_type) { }
+	      void _M_grew(size_type) { }
+	    };
+
+	    struct _Grow_back
+	    {
+	      _Grow_back(_Deque_impl&, size_type) { }
+	      void _M_grew(size_type) { }
+	    };
+	  };
+
+	// Enable ASan annotations for memory obtained from std::allocator.
+	template<typename _Up>
+	  struct _Asan<allocator<_Up> >
+	  {
+	  private:
+          static
+	    inline const void *__ptr_to_block(const void *__ptr)
+	    {
+              typedef long uintptr_t;
+	      uintptr_t __ptr_value = (uintptr_t)__ptr;
+
+	      return (const void *) (__ptr_value & SHADOW_MASK);
+	    }
+          static
+	    inline const void *__ptr_to_block_end(const void *__ptr)
+	    {
+              typedef long uintptr_t;
+	      uintptr_t __ptr_value = (uintptr_t)__ptr;
+
+	      return __ptr_to_block((const void *)(__ptr_value + SHADOW_GRANULARITY - 1));
+	    }
+        public:
+	    typedef typename __gnu_cxx::__alloc_traits<_Tp_alloc_type>
+	      ::size_type size_type;
+
+	    // Adjust ASan annotation for [_M_start, _M_end_of_storage) to
+	    // mark end of valid region as __curr instead of __prev.
+            static void
+	    _S_poison_front(_Deque_impl& __impl, iterator __b, iterator __e)
+	    {
+              if (__b == __e)
+                return;
+
+              _Map_pointer __mp = __b._M_node;
+              _Map_pointer __last_mp = __e._M_node;
+
+              const void *__p = __ptr_to_block(__b._M_cur);
+
+              // We iterate over map pointers and poison all blocks from __b to __e
+              // except of the last map pointer
+              while (__mp != __last_mp)
+              {
+                // Pointer to block's end
+                const void *__p_e = *__mp + (typename iterator::difference_type(__e._S_buffer_size()));
+                __sanitizer_annotate_contiguous_container(__p, __p_e, __p_e, __p); // poison [__p, __p_e]
+
+                __mp += 1;
+                __p = *__mp;
+              }
+
+              const void *__p_e = __e._M_cur;
+
+              if(__p == __p_e)
+                // Case true end was at the end of previous block.
+                return;
+
+              // poison happens after the container modification, so the size
+              // was already changed and may be 0 but we still have to poison the cleared blocks
+              if (__p_e == __e._M_last|| __impl._M_finish == __impl._M_start)
+                __sanitizer_annotate_contiguous_container(__p, __p_e, __p_e, __p);
+              else
+                // Works similarly to if/else in __annotate_unpoison_from_to_front,
+                // look there for explanation.
+                // We cannot poison block which contains element on the end.
+                __sanitizer_annotate_contiguous_container(__p, __ptr_to_block(__p_e), __ptr_to_block(__p_e), __p);
+	    }
+
+	    static void
+	    _S_poison_back(_Deque_impl& __impl, iterator __b, iterator __e)
+	    {
+              if (__b == __e)
+                return;
+
+              _Map_pointer __mp = __b._M_node;
+              _Map_pointer __last_mp = __e._M_node;
+
+              const void *__p = __b._M_cur;
+
+              // poison is called after a size change, so we have to poison all of it
+              // so we move the __p to begining of the shadow memory region/granularity
+              if (__impl._M_start == __impl._M_finish) // is_empty()
+                // if object is empty now, there is chance that we are using up to 7
+                // unpoisoned bytes, which "should be" (logical point of view) poisoned,
+                // as we can unpoison only prefixes of shadow memory blocks
+                // (due to how ASAN encodes values in shadow memory).
+                // In case it is empty now, we have to poison remaining bytes as well.
+                // otherwise, we cannot poison bytes before __p, in block with __p.
+                __p = __ptr_to_block(__p);
+
+              while (__mp != __last_mp)
+              {
+                const void *__p_e = *__mp + (typename iterator::difference_type(__e._S_buffer_size()));
+                __sanitizer_annotate_contiguous_container(__ptr_to_block(__p), __p_e, __p_e, __p);
+
+                __mp += 1;
+                __p = *__mp;
+              }
+
+              const void *__p_e = __e._M_cur;
+
+              if(__p == __p_e)
+                // Case true end was at the end of previous block.
+                return;
+
+              __sanitizer_annotate_contiguous_container(__ptr_to_block(__p), __p_e, __p_e, __p);
+	    }
+
+                      static void
+	    _S_unpoison_front(_Deque_impl& __impl, iterator __b, iterator __e)
+	    {
+              if (__b == __e)
+                return;
+
+              _Map_pointer __mp = __b._M_node;
+              _Map_pointer __last_mp = __e._M_node;
+
+              const void *__p = __ptr_to_block(__b._M_cur);
+              while (__mp != __last_mp)
+              {
+                const void *__p_e = *__mp + (typename iterator::difference_type(__e._S_buffer_size()));
+                __sanitizer_annotate_contiguous_container(__p, __p_e, __p, __p_e);
+
+                __mp += 1;
+                __p = *__mp;
+              }
+
+              const void *__p_e = __e._M_cur;
+
+              if(__p == __p_e)
+                // Case true end was at the end of previous block.
+                return;
+
+              // unpoison happens before the size is changes
+              // so we have to unpoison the block before its modified
+              if (__p_e == __e._M_last|| __impl._M_finish == __impl._M_start)
+                __sanitizer_annotate_contiguous_container(__p, __p_e, __p, __p_e);
+              else
+              {
+                // There are some elements in that deque block.
+                //
+                // if __p_e % SHADOW_GRANULARITY != 0, last block is already unpoisoned
+                // otherwise __ptr_to_block(__p_e) == __ptr_to_block_end(__p_e).
+                __sanitizer_annotate_contiguous_container(__p, __ptr_to_block(__p_e), __p, __ptr_to_block(__p_e));
+              }
+	    }
+
+	    static void
+	    _S_unpoison_back(_Deque_impl& __impl, iterator __b, iterator __e)
+	    {
+              if (__b == __e)
+                return;
+                printf("test unpoison %d\n", __e - __b);
+              _Map_pointer __mp = __b._M_node;
+              _Map_pointer __last_mp = __e._M_node;
+
+              const void *__p = __b._M_cur;
+
+              // unpoison is called before size is modified so we have to start
+              // unpoisoning from the beginning of shadow memory block
+              if (__impl._M_start == __impl._M_finish)
+                __p = __ptr_to_block(__p);
+
+              while (__mp != __last_mp)
+              {
+                const void *__p_e = *__mp + (typename iterator::difference_type(__e._S_buffer_size()));
+                __sanitizer_annotate_contiguous_container(__ptr_to_block(__p), __p_e, __p, __p_e);
+  
+                __mp += 1;
+                __p = *__mp;
+              }
+
+             const void *__p_e = __e._M_cur;
+
+              if(__p == __p_e)
+                // Case true end was at the end of previous block.
+                return;
+              printf("test final unpoison back:\n  %p\n  %p\n\n", __p, __p_e);                
+              __sanitizer_annotate_contiguous_container(__ptr_to_block(__p), __p_e, __p, __p_e);
+	    }
+
+            // Grow
+            static void
+	    _S_grow_front(_Deque_impl& __impl, size_type __n)
+	    { _S_unpoison_front(__impl, __impl._M_start - __n, __impl._M_start); }
+
+	    static void
+	    _S_grow_back(_Deque_impl& __impl, size_type __n)
+            { _S_unpoison_back(__impl, __impl._M_finish, __impl._M_finish + __n); }
+
+	    static void
+	    _S_shrink_front(_Deque_impl& __impl, iterator __old_start, iterator __old_end)
+	    {
+              if(__impl._M_finish != __impl._M_start)
+                _S_poison_front(__impl, __old_start, __impl._M_start);
+              else
+                _S_poison_front(__impl, __old_start, __old_end);
+            }
+
+            static void
+	    _S_shrink_back(_Deque_impl& __impl, iterator __old_start, iterator __old_end)
+	    {
+              if(__impl._M_finish != __impl._M_start)
+                _S_poison_front(__impl, __impl._M_finish, __old_end);
+              else
+                _S_poison_front(__impl, __old_start, __old_end);
+            }
+
+	    static void
+	    _S_on_dealloc(_Deque_impl& __impl)
+	    {
+	      if (__impl._M_start)
+		{
+                    _S_unpoison_front(*__impl._M_map, __impl._M_start); 
+                    _S_unpoison_back(__impl._M_finish,
+                      *(__impl._M_map + __impl._M_map_size - 1) + (typename iterator::difference_type(iterator::_S_buffer_size())));
+                }
+	    }
+
+	    // Used on reallocation to tell ASan unused capacity is invalid.
+	    struct _Reinit
+	    {
+	      explicit _Reinit(_Deque_impl& __impl) : _M_impl(__impl)
+	      {
+		// Mark unused capacity as valid again before deallocating it.
+		_S_on_dealloc(_M_impl);
+	      }
+
+	      ~_Reinit()
+	      {
+		// Mark unused capacity as invalid after reallocation.
+		if (_M_impl._M_start)
+		  {
+                    _S_poison_front(*_M_impl._M_map, _M_impl._M_start); 
+                    _S_poison_back(_M_impl._M_finish,
+                      *(_M_impl._M_map + _M_impl._M_map_size - 1) + (typename iterator::difference_type(iterator::_S_buffer_size())));
+                  }
+	      }
+
+	      _Deque_impl& _M_impl;
+
+#if __cplusplus >= 201103L
+	      _Reinit(const _Reinit&) = delete;
+	      _Reinit& operator=(const _Reinit&) = delete;
+#endif
+	    };
+
+	    // Tell ASan when unused capacity is initialized to be valid.
+	    struct _Grow_front
+	    {
+	      _Grow_front(_Deque_impl& __impl, size_type __n)
+	      : _M_impl(__impl), _M_n(__n), _M_old_start(__impl._M_start), _M_end(__impl._M_finish)
+	      { _S_grow_front(_M_impl, __n); }
+
+	      ~_Grow_front() { if (_M_n) _S_shrink_front(_M_impl, _M_old_start, _M_end + _M_n); }
+
+	      void _M_grew(size_type __n) {
+                  _M_n -= __n;
+               }
+
+#if __cplusplus >= 201103L
+	      _Grow_front(const _Grow_front&) = delete;
+	      _Grow_front& operator=(const _Grow_front&) = delete;
+#endif
+	    private:
+	      _Deque_impl& _M_impl;
+	      size_type _M_n;
+            iterator _M_old_start;
+            iterator _M_end;
+	    };
+
+	    struct _Grow_back
+	    {
+	      _Grow_back(_Deque_impl& __impl, size_type __n)
+	      : _M_impl(__impl), _M_n(__n), _M_old_start(__impl._M_start), _M_end(__impl._M_finish)
+	      { _S_grow_back(_M_impl, __n); }
+
+	      ~_Grow_back() { if (_M_n) _S_shrink_back(_M_impl, _M_old_start, _M_end + _M_n); }
+
+	      void _M_grew(size_type __n) {
+                  _M_n -= __n;
+              }
+
+#if __cplusplus >= 201103L
+	      _Grow_back(const _Grow_back&) = delete;
+	      _Grow_back& operator=(const _Grow_back&) = delete;
+#endif
+	    private:
+	      _Deque_impl& _M_impl;
+	      size_type _M_n;
+            iterator _M_old_start;
+            iterator _M_end;
+	    };
+	  };
+
+#define _GLIBCXX_ASAN_ANNOTATE_REINIT \
+  typename _Base::_Deque_impl::template _Asan<>::_Reinit const \
+	__attribute__((__unused__)) __reinit_guard(this->_M_impl)
+#define _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(n) \
+  typename _Base::_Deque_impl::template _Asan<>::_Grow_front \
+	__attribute__((__unused__)) __grow_guard(this->_M_impl, (n))
+#define _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(n) \
+  typename _Base::_Deque_impl::template _Asan<>::_Grow_back \
+	__attribute__((__unused__)) __grow_guard(this->_M_impl, (n))
+#define _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(n) __grow_guard._M_grew((n))
+#define _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(n) __grow_guard._M_grew((n))
+#define _GLIBCXX_ASAN_ANNOTATE_SHRINK_FRONT(s, e) \
+  _Base::_Deque_impl::template _Asan<>::_S_shrink_front(this->_M_impl, (s), (e))
+
+#define _GLIBCXX_ASAN_ANNOTATE_SHRINK_BACK(s, e) \
+  _Base::_Deque_impl::template _Asan<>::_S_shrink_back(this->_M_impl, (s), (e))
+#define _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC \
+  _Base::_Deque_impl::template _Asan<>::_S_on_dealloc(this->_M_impl)
+#else // ! (_GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE)
+#define _GLIBCXX_ASAN_ANNOTATE_REINIT
+#define _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(n)
+#define _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(n)
+#define _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(n)
+#define _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(n)
+#define _GLIBCXX_ASAN_ANNOTATE_SHRINK_FRONT(s, e)
+#define _GLIBCXX_ASAN_ANNOTATE_SHRINK_BACK(s, e)
+#define _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC
+#endif // _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE
       };
 
       _Tp_alloc_type&
