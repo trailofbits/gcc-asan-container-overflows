@@ -557,17 +557,18 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	: _Tp_alloc_type(std::move(__a)), _Deque_impl_data(std::move(__d))
 	{ }
 #endif
+
 #if _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE
 	template<typename = _Tp_alloc_type>
 	  struct _Asan
 	  {
 	    typedef typename __gnu_cxx::__alloc_traits<_Tp_alloc_type>
 	      ::size_type size_type;
-
+            static void _S_annotate_contiguous_container(const void *, const void *, const void *, const void *) { }
 	    static void _S_shrink_front(_Deque_impl&, size_type) { }
           static void _S_shrink_back(_Deque_impl&, size_type) { }
+            static void _S_on_alloc(_Deque_impl&) { }
 	    static void _S_on_dealloc(_Deque_impl&) { }
-
 	    typedef _Deque_impl& _Reinit;
 
 	    struct _Grow_front
@@ -608,6 +609,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    typedef typename __gnu_cxx::__alloc_traits<_Tp_alloc_type>
 	      ::size_type size_type;
 
+            static void
+            _S_annotate_contiguous_container(const void *__container_begin, const void *__container_end,
+              const void *__old_mid, const void *__new_mid)
+              { __sanitizer_annotate_contiguous_container(__container_begin, __container_end, __old_mid, __new_mid); }
+
 	    // Adjust ASan annotation for [_M_start, _M_end_of_storage) to
 	    // mark end of valid region as __curr instead of __prev.
             static void
@@ -636,7 +642,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
               const void *__p_e = __e._M_cur;
 
               if(__p == __p_e)
-                // Case true end was at the end of previous block.
+                // Case: true end was at the end of previous block.
                 return;
 
               // poison happens after the container modification, so the size
@@ -684,7 +690,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
               const void *__p_e = __e._M_cur;
 
               if(__p == __p_e)
-                // Case true end was at the end of previous block.
+                // Case: true end was at the end of previous block.
                 return;
 
               __sanitizer_annotate_contiguous_container(__ptr_to_block(__p), __p_e, __p_e, __p);
@@ -712,7 +718,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
               const void *__p_e = __e._M_cur;
 
               if(__p == __p_e)
-                // Case true end was at the end of previous block.
+                // Case: true end was at the end of previous block.
                 return;
 
               // unpoison happens before the size is changes
@@ -734,7 +740,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    {
               if (__b == __e)
                 return;
-                printf("test unpoison %d\n", __e - __b);
+
               _Map_pointer __mp = __b._M_node;
               _Map_pointer __last_mp = __e._M_node;
 
@@ -757,9 +763,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
              const void *__p_e = __e._M_cur;
 
               if(__p == __p_e)
-                // Case true end was at the end of previous block.
+                // Case: true end was at the end of previous block.
                 return;
-              printf("test final unpoison back:\n  %p\n  %p\n\n", __p, __p_e);                
+               
               __sanitizer_annotate_contiguous_container(__ptr_to_block(__p), __p_e, __p, __p_e);
 	    }
 
@@ -773,61 +779,38 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
             { _S_unpoison_back(__impl, __impl._M_finish, __impl._M_finish + __n); }
 
 	    static void
-	    _S_shrink_front(_Deque_impl& __impl, iterator __old_start, iterator __old_end)
+	    _S_shrink_front(_Deque_impl& __impl, iterator __old_start, iterator __poison_end)
 	    {
-              if(__impl._M_finish != __impl._M_start)
-                _S_poison_front(__impl, __old_start, __impl._M_start);
-              else
-                _S_poison_front(__impl, __old_start, __old_end);
+              _S_poison_front(__impl, __old_start, __poison_end);
             }
 
             static void
-	    _S_shrink_back(_Deque_impl& __impl, iterator __old_start, iterator __old_end)
+	    _S_shrink_back(_Deque_impl& __impl, iterator __poison_start, iterator __old_end)
 	    {
-              if(__impl._M_finish != __impl._M_start)
-                _S_poison_front(__impl, __impl._M_finish, __old_end);
-              else
-                _S_poison_front(__impl, __old_start, __old_end);
+              _S_poison_back(__impl, __poison_start, __old_end);
             }
+
+	    static void
+	    _S_on_alloc(_Deque_impl& __impl)
+	    {
+	      if (__impl._M_map_size)
+		{
+                    _S_unpoison_back(__impl, __impl._M_start, __impl._M_finish);
+                }
+	    }
 
 	    static void
 	    _S_on_dealloc(_Deque_impl& __impl)
 	    {
-	      if (__impl._M_start)
-		{
-                    _S_unpoison_front(*__impl._M_map, __impl._M_start); 
-                    _S_unpoison_back(__impl._M_finish,
-                      *(__impl._M_map + __impl._M_map_size - 1) + (typename iterator::difference_type(iterator::_S_buffer_size())));
-                }
-	    }
-
-	    // Used on reallocation to tell ASan unused capacity is invalid.
-	    struct _Reinit
-	    {
-	      explicit _Reinit(_Deque_impl& __impl) : _M_impl(__impl)
+	      if (__impl._M_map_size)
 	      {
-		// Mark unused capacity as valid again before deallocating it.
-		_S_on_dealloc(_M_impl);
-	      }
-
-	      ~_Reinit()
-	      {
-		// Mark unused capacity as invalid after reallocation.
-		if (_M_impl._M_start)
-		  {
-                    _S_poison_front(*_M_impl._M_map, _M_impl._M_start); 
-                    _S_poison_back(_M_impl._M_finish,
-                      *(_M_impl._M_map + _M_impl._M_map_size - 1) + (typename iterator::difference_type(iterator::_S_buffer_size())));
+                    iterator __map_begin(__impl._M_start._M_first, __impl._M_start._M_node);
+                    iterator __map_end(__impl._M_finish._M_first, __impl._M_finish._M_node);
+                    __map_end += __deque_buf_size(sizeof(_Tp));
+                    _S_unpoison_front(__impl, __map_begin, __impl._M_start); 
+                    _S_unpoison_back(__impl, __impl._M_finish, __map_end);
                   }
 	      }
-
-	      _Deque_impl& _M_impl;
-
-#if __cplusplus >= 201103L
-	      _Reinit(const _Reinit&) = delete;
-	      _Reinit& operator=(const _Reinit&) = delete;
-#endif
-	    };
 
 	    // Tell ASan when unused capacity is initialized to be valid.
 	    struct _Grow_front
@@ -877,33 +860,36 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    };
 	  };
 
-#define _GLIBCXX_ASAN_ANNOTATE_REINIT \
-  typename _Base::_Deque_impl::template _Asan<>::_Reinit const \
-	__attribute__((__unused__)) __reinit_guard(this->_M_impl)
+#define _GLIBCXX_ASAN_ANNOTATE_DEQUE_NODE_ALLOC(s) \
+  _Deque_base<_Tp, _Alloc>::_Deque_impl::template _Asan<>::_S_annotate_contiguous_container((s), (s) + __deque_buf_size(sizeof(_Tp)), \
+        (s) + __deque_buf_size(sizeof(_Tp)), (s))
+#define _GLIBCXX_ASAN_ANNOTATE_DEQUE_NODE_DEALLOC(s) \
+  _Deque_base<_Tp, _Alloc>::_Deque_impl::template _Asan<>::_S_annotate_contiguous_container((s), (s) + __deque_buf_size(sizeof(_Tp)), \
+        (s), (s) + __deque_buf_size(sizeof(_Tp)))
+#define _GLIBCXX_ASAN_ANNOTATE_DEQUE_INIT \
+  _Deque_base<_Tp, _Alloc>::_Deque_impl::template _Asan<>::_S_on_alloc(this->_M_impl)
 #define _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(n) \
   typename _Base::_Deque_impl::template _Asan<>::_Grow_front \
 	__attribute__((__unused__)) __grow_guard(this->_M_impl, (n))
 #define _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(n) \
   typename _Base::_Deque_impl::template _Asan<>::_Grow_back \
 	__attribute__((__unused__)) __grow_guard(this->_M_impl, (n))
-#define _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(n) __grow_guard._M_grew((n))
-#define _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(n) __grow_guard._M_grew((n))
+#define _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(n) __grow_guard._M_grew(n)
+#define _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(n) _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(n)
 #define _GLIBCXX_ASAN_ANNOTATE_SHRINK_FRONT(s, e) \
   _Base::_Deque_impl::template _Asan<>::_S_shrink_front(this->_M_impl, (s), (e))
-
 #define _GLIBCXX_ASAN_ANNOTATE_SHRINK_BACK(s, e) \
   _Base::_Deque_impl::template _Asan<>::_S_shrink_back(this->_M_impl, (s), (e))
-#define _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC \
-  _Base::_Deque_impl::template _Asan<>::_S_on_dealloc(this->_M_impl)
 #else // ! (_GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE)
-#define _GLIBCXX_ASAN_ANNOTATE_REINIT
+#define _GLIBCXX_ASAN_ANNOTATE_DEQUE_NODE_ALLOC(s)
+#define _GLIBCXX_ASAN_ANNOTATE_DEQUE_NODE_DEALLOC(s)
+#define _GLIBCXX_ASAN_ANNOTATE_DEQUE_INIT
 #define _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(n)
 #define _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(n)
 #define _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(n)
 #define _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(n)
 #define _GLIBCXX_ASAN_ANNOTATE_SHRINK_FRONT(s, e)
 #define _GLIBCXX_ASAN_ANNOTATE_SHRINK_BACK(s, e)
-#define _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC
 #endif // _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE
       };
 
