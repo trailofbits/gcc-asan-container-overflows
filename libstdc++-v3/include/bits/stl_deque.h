@@ -909,13 +909,16 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       _M_allocate_node()
       {
 	typedef __gnu_cxx::__alloc_traits<_Tp_alloc_type> _Traits;
-	return _Traits::allocate(_M_impl, __deque_buf_size(sizeof(_Tp)));
+	_Ptr __new_node =  _Traits::allocate(_M_impl, __deque_buf_size(sizeof(_Tp)));
+        _GLIBCXX_ASAN_ANNOTATE_DEQUE_NODE_ALLOC(__new_node);
+        return __new_node;
       }
 
       void
       _M_deallocate_node(_Ptr __p) _GLIBCXX_NOEXCEPT
       {
 	typedef __gnu_cxx::__alloc_traits<_Tp_alloc_type> _Traits;
+        _GLIBCXX_ASAN_ANNOTATE_DEQUE_NODE_DEALLOC(__p);
 	_Traits::deallocate(_M_impl, __p, __deque_buf_size(sizeof(_Tp)));
       }
 
@@ -999,6 +1002,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       this->_M_impl._M_finish._M_cur = (this->_M_impl._M_finish._M_first
 					+ __num_elements
 					% __deque_buf_size(sizeof(_Tp)));
+      _GLIBCXX_ASAN_ANNOTATE_DEQUE_INIT;
     }
 
   template<typename _Tp, typename _Alloc>
@@ -1810,10 +1814,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       {
 	if (this->_M_impl._M_start._M_cur != this->_M_impl._M_start._M_first)
 	  {
+            _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(1);
 	    _Alloc_traits::construct(this->_M_impl,
 				     this->_M_impl._M_start._M_cur - 1,
 				     __x);
 	    --this->_M_impl._M_start._M_cur;
+            _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(1);
 	  }
 	else
 	  _M_push_front_aux(__x);
@@ -1848,9 +1854,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	if (this->_M_impl._M_finish._M_cur
 	    != this->_M_impl._M_finish._M_last - 1)
 	  {
+            _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(1);
 	    _Alloc_traits::construct(this->_M_impl,
 				     this->_M_impl._M_finish._M_cur, __x);
 	    ++this->_M_impl._M_finish._M_cur;
+            _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(1);
 	  }
 	else
 	  _M_push_back_aux(__x);
@@ -1885,9 +1893,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	if (this->_M_impl._M_start._M_cur
 	    != this->_M_impl._M_start._M_last - 1)
 	  {
+            iterator __old_beg = this->_M_impl._M_start;
 	    _Alloc_traits::destroy(_M_get_Tp_allocator(),
 				   this->_M_impl._M_start._M_cur);
 	    ++this->_M_impl._M_start._M_cur;
+            _GLIBCXX_ASAN_ANNOTATE_SHRINK_FRONT(__old_beg, this->_M_impl._M_start);
 	  }
 	else
 	  _M_pop_front_aux();
@@ -1908,9 +1918,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	if (this->_M_impl._M_finish._M_cur
 	    != this->_M_impl._M_finish._M_first)
 	  {
+            iterator __old_end = this->_M_impl._M_finish;
 	    --this->_M_impl._M_finish._M_cur;
 	    _Alloc_traits::destroy(_M_get_Tp_allocator(),
 				   this->_M_impl._M_finish._M_cur);
+            _GLIBCXX_ASAN_ANNOTATE_SHRINK_BACK(this->_M_impl._M_finish, __old_end);
 	  }
 	else
 	  _M_pop_back_aux();
@@ -2403,7 +2415,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       void
       _M_erase_at_begin(iterator __pos)
       {
+        iterator __old_begin = begin();
 	_M_destroy_data(begin(), __pos, _M_get_Tp_allocator());
+        _GLIBCXX_ASAN_ANNOTATE_SHRINK_FRONT(__old_begin, __pos);
 	_M_destroy_nodes(this->_M_impl._M_start._M_node, __pos._M_node);
 	this->_M_impl._M_start = __pos;
       }
@@ -2413,7 +2427,9 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       void
       _M_erase_at_end(iterator __pos)
       {
+        iterator __old_end = end();
 	_M_destroy_data(__pos, end(), _M_get_Tp_allocator());
+        _GLIBCXX_ASAN_ANNOTATE_SHRINK_BACK(__pos, __old_end);
 	_M_destroy_nodes(__pos._M_node + 1,
 			 this->_M_impl._M_finish._M_node + 1);
 	this->_M_impl._M_finish = __pos;

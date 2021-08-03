@@ -56,6 +56,9 @@
 #ifndef _DEQUE_TCC
 #define _DEQUE_TCC 1
 
+#include <bits/stl_deque.h>
+#include <bits/range_access.h>
+
 #include <bits/stl_algobase.h>
 
 namespace std _GLIBCXX_VISIBILITY(default)
@@ -142,10 +145,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       {
 	if (this->_M_impl._M_start._M_cur != this->_M_impl._M_start._M_first)
 	  {
+            _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(1);
 	    _Alloc_traits::construct(this->_M_impl,
 				     this->_M_impl._M_start._M_cur - 1,
 				     std::forward<_Args>(__args)...);
 	    --this->_M_impl._M_start._M_cur;
+            _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(1);
 	  }
 	else
 	  _M_push_front_aux(std::forward<_Args>(__args)...);
@@ -167,10 +172,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	if (this->_M_impl._M_finish._M_cur
 	    != this->_M_impl._M_finish._M_last - 1)
 	  {
+            _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(1);
 	    _Alloc_traits::construct(this->_M_impl,
 				     this->_M_impl._M_finish._M_cur,
 				     std::forward<_Args>(__args)...);
 	    ++this->_M_impl._M_finish._M_cur;
+            _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(1);
 	  }
 	else
 	  _M_push_back_aux(std::forward<_Args>(__args)...);
@@ -312,9 +319,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  iterator __new_start = _M_reserve_elements_at_front(__n);
 	  __try
 	    {
+              _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(__n);
 	      std::__uninitialized_fill_a(__new_start, this->_M_impl._M_start,
 					  __x, _M_get_Tp_allocator());
 	      this->_M_impl._M_start = __new_start;
+              _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(__n);
 	    }
 	  __catch(...)
 	    {
@@ -328,10 +337,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  iterator __new_finish = _M_reserve_elements_at_back(__n);
 	  __try
 	    {
+              _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(__n);
 	      std::__uninitialized_fill_a(this->_M_impl._M_finish,
 					  __new_finish, __x,
 					  _M_get_Tp_allocator());
 	      this->_M_impl._M_finish = __new_finish;
+              _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(__n);
 	    }
 	  __catch(...)
 	    {
@@ -355,10 +366,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  iterator __new_finish = _M_reserve_elements_at_back(__n);
 	  __try
 	    {
+              _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(__n);
 	      std::__uninitialized_default_a(this->_M_impl._M_finish,
 					     __new_finish,
 					     _M_get_Tp_allocator());
 	      this->_M_impl._M_finish = __new_finish;
+              _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(__n);
 	    }
 	  __catch(...)
 	    {
@@ -494,6 +507,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	*(this->_M_impl._M_finish._M_node + 1) = this->_M_allocate_node();
 	__try
 	  {
+            _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(1);
 #if __cplusplus >= 201103L
 	    _Alloc_traits::construct(this->_M_impl,
 				     this->_M_impl._M_finish._M_cur,
@@ -504,6 +518,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    this->_M_impl._M_finish._M_set_node(this->_M_impl._M_finish._M_node
 						+ 1);
 	    this->_M_impl._M_finish._M_cur = this->_M_impl._M_finish._M_first;
+            _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(1);
 	  }
 	__catch(...)
 	  {
@@ -533,6 +548,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	*(this->_M_impl._M_start._M_node - 1) = this->_M_allocate_node();
 	__try
 	  {
+            _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(1);
 	    this->_M_impl._M_start._M_set_node(this->_M_impl._M_start._M_node
 					       - 1);
 	    this->_M_impl._M_start._M_cur = this->_M_impl._M_start._M_last - 1;
@@ -543,6 +559,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 #else
 	    this->_M_impl.construct(this->_M_impl._M_start._M_cur, __t);
 #endif
+            _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(1);
 	  }
 	__catch(...)
 	  {
@@ -558,10 +575,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
     _M_pop_back_aux()
     {
       _M_deallocate_node(this->_M_impl._M_finish._M_first);
+      iterator __old_end = this->_M_impl._M_finish;
       this->_M_impl._M_finish._M_set_node(this->_M_impl._M_finish._M_node - 1);
       this->_M_impl._M_finish._M_cur = this->_M_impl._M_finish._M_last - 1;
       _Alloc_traits::destroy(_M_get_Tp_allocator(),
 			     this->_M_impl._M_finish._M_cur);
+      _GLIBCXX_ASAN_ANNOTATE_SHRINK_BACK(this->_M_impl._M_finish, __old_end);
     }
 
   // Called only if _M_impl._M_start._M_cur == _M_impl._M_start._M_last - 1.
@@ -576,8 +595,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       _Alloc_traits::destroy(_M_get_Tp_allocator(),
 			     this->_M_impl._M_start._M_cur);
       _M_deallocate_node(this->_M_impl._M_start._M_first);
+      iterator __old_beg = this->_M_impl._M_start;
       this->_M_impl._M_start._M_set_node(this->_M_impl._M_start._M_node + 1);
       this->_M_impl._M_start._M_cur = this->_M_impl._M_start._M_first;
+      _GLIBCXX_ASAN_ANNOTATE_SHRINK_FRONT(__old_beg, this->_M_impl._M_start);
     }
 
   template <typename _Tp, typename _Alloc>
@@ -603,9 +624,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    iterator __new_start = _M_reserve_elements_at_front(__n);
 	    __try
 	      {
+                _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(__n);
 		std::__uninitialized_copy_a(__first, __last, __new_start,
 					    _M_get_Tp_allocator());
 		this->_M_impl._M_start = __new_start;
+                _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(__n);
 	      }
 	    __catch(...)
 	      {
@@ -619,10 +642,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    iterator __new_finish = _M_reserve_elements_at_back(__n);
 	    __try
 	      {
+                _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(__n);
 		std::__uninitialized_copy_a(__first, __last,
 					    this->_M_impl._M_finish,
 					    _M_get_Tp_allocator());
 		this->_M_impl._M_finish = __new_finish;
+                _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(__n);
 	      }
 	    __catch(...)
 	      {
@@ -692,6 +717,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  __pos = this->_M_impl._M_start + __elems_before;
 	  __try
 	    {
+              _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(__n);
 	      if (__elems_before >= difference_type(__n))
 		{
 		  iterator __start_n = (this->_M_impl._M_start
@@ -713,6 +739,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 		  this->_M_impl._M_start = __new_start;
 		  std::fill(__old_start, __pos, __x_copy);
 		}
+              _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(__n);
 	    }
 	  __catch(...)
 	    {
@@ -730,6 +757,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  __pos = this->_M_impl._M_finish - __elems_after;
 	  __try
 	    {
+              _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(__n);
 	      if (__elems_after > difference_type(__n))
 		{
 		  iterator __finish_n = (this->_M_impl._M_finish
@@ -752,6 +780,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 		  this->_M_impl._M_finish = __new_finish;
 		  std::fill(__pos, __old_finish, __x_copy);
 		}
+              _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(__n);
 	    }
 	  __catch(...)
 	    {
@@ -779,6 +808,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	    __pos = this->_M_impl._M_start + __elemsbefore;
 	    __try
 	      {
+                _GLIBCXX_ASAN_ANNOTATE_GROW_FRONT(__n);
 		if (__elemsbefore >= difference_type(__n))
 		  {
 		    iterator __start_n = (this->_M_impl._M_start
@@ -801,6 +831,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 		    this->_M_impl._M_start = __new_start;
 		    std::copy(__mid, __last, __old_start);
 		  }
+                _GLIBCXX_ASAN_ANNOTATE_GREW_FRONT(__n);
 	      }
 	    __catch(...)
 	      {
@@ -818,6 +849,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  __pos = this->_M_impl._M_finish - __elemsafter;
 	  __try
 	    {
+              _GLIBCXX_ASAN_ANNOTATE_GROW_BACK(__n);
 	      if (__elemsafter > difference_type(__n))
 		{
 		  iterator __finish_n = (this->_M_impl._M_finish
@@ -841,6 +873,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 		  this->_M_impl._M_finish = __new_finish;
 		  std::copy(__first, __mid, __pos);
 		}
+              _GLIBCXX_ASAN_ANNOTATE_GREW_BACK(__n);
 	    }
 	  __catch(...)
 	    {
