@@ -564,9 +564,12 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 	  {
 	    typedef typename __gnu_cxx::__alloc_traits<_Tp_alloc_type>
 	      ::size_type size_type;
-            static void _S_annotate_contiguous_container(const void *, const void *, const void *, const void *) { }
-	    static void _S_shrink_front(_Deque_impl&, size_type) { }
-          static void _S_shrink_back(_Deque_impl&, size_type) { }
+            template<typename AllocPtrt>
+            static void _S_annotate_contiguous_container(AllocPtrt, AllocPtrt, AllocPtrt, AllocPtrt) { }
+            // ^ It is a template, as some std::allocator_traits< "pointers" cannot be casted to const void *.
+            // It happens only with non-standard allocator.
+	    static void _S_shrink_front(_Deque_impl&, iterator, iterator) { }
+            static void _S_shrink_back(_Deque_impl&, iterator, iterator) { }
             static void _S_on_alloc(_Deque_impl&) { }
 	    static void _S_on_dealloc(_Deque_impl&) { }
 	    typedef _Deque_impl& _Reinit;
