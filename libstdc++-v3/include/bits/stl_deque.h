@@ -74,6 +74,13 @@ extern "C" void
 __sanitizer_annotate_contiguous_container(const void*, const void*,
 					  const void*, const void*);
 
+
+// TODO:
+extern "C" bool
+__sanitizer_verify_contiguous_container(const void*, const void*, const void*);
+
+#endif // _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE
+
 #ifndef SHADOW_SCALE
 #define SHADOW_SCALE (3U)
 #endif
@@ -84,7 +91,7 @@ __sanitizer_annotate_contiguous_container(const void*, const void*,
 #define SHADOW_MASK (~(SHADOW_GRANULARITY - 1))
 #endif
 
-#endif // _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE
+
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
@@ -672,13 +679,15 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 
               // poison is called after a size change, so we have to poison all of it
               // so we move the __p to begining of the shadow memory region/granularity
-              if (__impl._M_start == __impl._M_finish) // is_empty()
-                // if object is empty now, there is chance that we are using up to 7
+              if (__b == __impl._M_start) // Are we romoving from the very beginning?
+                // if we are removing from the beginning,
+                // there is chance that we should poison up to 7 additionally
                 // unpoisoned bytes, which "should be" (logical point of view) poisoned,
                 // as we can unpoison only prefixes of shadow memory blocks
                 // (due to how ASAN encodes values in shadow memory).
-                // In case it is empty now, we have to poison remaining bytes as well.
-                // otherwise, we cannot poison bytes before __p, in block with __p.
+                // In case we won't keep any data in first memory block,
+                // we have to poison remaining bytes as well.
+                // Otherwise, we cannot poison bytes before __p, in block with __p.
                 __p = __ptr_to_block(__p);
 
               while (__mp != __last_mp)
@@ -894,7 +903,104 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
 #define _GLIBCXX_ASAN_ANNOTATE_SHRINK_FRONT(s, e)
 #define _GLIBCXX_ASAN_ANNOTATE_SHRINK_BACK(s, e)
 #endif // _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE
+// __LIBCPP_VERIFY_ASAN_DEQUE_ANNOTATIONS -
+// This macro should be defined only during testing ASAN.
+// Probably you should not define it by yourself, include "asan_testing.h"
+// instead, as other dependencies exist.
+
+#ifdef __LIBCPP_VERIFY_ASAN_DEQUE_ANNOTATIONS && _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_DEQUE
+private:
+          static
+	    inline const void *__ptr_to_block(const void *__ptr)
+	    {
+              typedef long uintptr_t;
+	      uintptr_t __ptr_value = (uintptr_t)__ptr;
+
+	      return (const void *) (__ptr_value & SHADOW_MASK);
+	    }
+          static
+	    inline const void *__ptr_to_block_end(const void *__ptr)
+	    {
+              typedef long uintptr_t;
+	      uintptr_t __ptr_value = (uintptr_t)__ptr;
+
+	      return __ptr_to_block((const void *)(__ptr_value + SHADOW_GRANULARITY - 1));
+	    }
+public:
+    bool __verify_asan_annotations(_Deque_impl const &__impl) const _GLIBCXX_NOEXCEPT {
+        // This function tests deque object annotations.
+        // This test is simplified, it tests only if:
+        // - memory owned by deque (deque blocks) not containig alements is poisoned.
+        // - memory owned by deque elements is accessible.
+        // - it takes into account ASan limitation of poisonning only sufixes.
+        //
+        // Therefore you cannot test, with that function, deque containing objects
+        // which memory may be partialy (or fully) poisoned, like std::string (SSO case).
+        // You can test std::vector or long std::string.
+
+        if(!__impl._M_start._M_first) return true;
+
+        if (__impl._M_start == __impl._M_finish)
+        {
+          return __sanitizer_verify_contiguous_container(__impl._M_start._M_first, __impl._M_start._M_first, __impl._M_finish._M_last);
+        }
+
+        for (iterator __it = __impl._M_start; true; __it += __deque_buf_size(sizeof(_Tp)))
+        {   
+            // Go over all blocks, find the place we are in and verify its annotations
+            // Note that __p_last points *behind* the last item.__base::__map_.end()
+            
+            // - a "prefix" block 
+            // - first block with items
+            // - last block with items
+            // - block after last block with items
+            // - i
+
+            // There is no situation of node before __first_mp or after __last_mp.
+
+            // Is the block the first block that contains elements?
+            if (__it == __impl._M_start)
+            {
+                // Is the first element in deque not in (outside of) the first shadow block of a deque block
+                if (__ptr_to_block(__it._M_cur) != __it._M_first)
+                    {if (!__sanitizer_verify_contiguous_container(__it._M_first, __it._M_first, __ptr_to_block(__it._M_cur))) return false;}
+
+                // Is it both the first and last block that contains elements?
+                // (NOTE: This is intentionally not "else if")
+                if (__it._M_node == __impl._M_finish._M_node)
+                    {if (!__sanitizer_verify_contiguous_container(__ptr_to_block(__it._M_cur), __impl._M_finish._M_cur,
+                      __it._M_first + __deque_buf_size(sizeof(_Tp)))) return false;}
+
+                // Otherwise its the first but not last deque block that contains elements
+                else
+                    {if (!__sanitizer_verify_contiguous_container(__ptr_to_block(__it._M_cur), __it._M_first + __deque_buf_size(sizeof(_Tp)),
+                      __it._M_first + __deque_buf_size(sizeof(_Tp)))) return false;}
+
+            }
+            // Is the block the last block that contains elements?
+            else if (__it._M_node == __impl._M_finish._M_node)
+                {if (!__sanitizer_verify_contiguous_container(__it._M_first, __impl._M_finish._M_cur,
+                  __it._M_first + __deque_buf_size(sizeof(_Tp)))) return false;}
+
+            // We are in a middle block that contains elements from begining to end
+            // We check if the whole block is unpoisoned
+            else // __first_mp < __it < __last_mp
+                {if (!__sanitizer_verify_contiguous_container(__it._M_first, __it._M_first + __deque_buf_size(sizeof(_Tp)),
+                  __it._M_first + __deque_buf_size(sizeof(_Tp)))) return false;}
+
+          __it = iterator(__it._M_first, __it._M_node);
+
+          if(__it._M_node == __impl._M_finish._M_node) break;
+        }
+
+        return true;
+    }
+#endif
       };
+
+        bool __verify_asan_annotations() const _GLIBCXX_NOEXCEPT {
+                return this->_M_impl.__verify_asan_annotations(this->_M_impl);
+        }
 
       _Tp_alloc_type&
       _M_get_Tp_allocator() _GLIBCXX_NOEXCEPT
@@ -1174,6 +1280,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       using _Base::_M_deallocate_map;
       using _Base::_M_get_Tp_allocator;
 
+public:
+       using _Base::__verify_asan_annotations;
       /**
        *  A total of four data members accumulated down the hierarchy.
        *  May be accessed via _M_impl.*

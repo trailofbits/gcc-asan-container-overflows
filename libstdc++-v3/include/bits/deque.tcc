@@ -592,10 +592,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
       _Alloc_traits::destroy(_M_get_Tp_allocator(),
 			     this->_M_impl._M_start._M_cur);
       _M_deallocate_node(this->_M_impl._M_start._M_first);
-      iterator __old_beg = this->_M_impl._M_start;
       this->_M_impl._M_start._M_set_node(this->_M_impl._M_start._M_node + 1);
       this->_M_impl._M_start._M_cur = this->_M_impl._M_start._M_first;
-      _GLIBCXX_ASAN_ANNOTATE_SHRINK_FRONT(__old_beg, this->_M_impl._M_start);
     }
 
   template <typename _Tp, typename _Alloc>
