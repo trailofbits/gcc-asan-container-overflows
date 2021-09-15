@@ -48,6 +48,11 @@
 # include <string_view>
 #endif
 
+#if _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_STRING
+extern "C" void
+__sanitizer_annotate_contiguous_container(const void*, const void*,
+					  const void*, const void*);
+#endif
 
 namespace std _GLIBCXX_VISIBILITY(default)
 {
@@ -173,6 +178,133 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 	_CharT           _M_local_buf[_S_local_capacity + 1];
 	size_type        _M_allocated_capacity;
       };
+
+#if _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_STRING
+	template<typename = _Char_alloc_type>
+	  struct _Asan
+	  {
+	    typedef typename __gnu_cxx::__alloc_traits<_Char_alloc_type>
+	      ::size_type size_type;
+
+	    static void _S_shrink(basic_string&, size_type) { }
+	    static void _S_on_dealloc(basic_string&) { }
+
+	    typedef basic_string& _Reinit;
+
+	    struct _Grow
+	    {
+	      _Grow(basic_string&, size_type) { }
+	      void _M_grew(size_type) { }
+	    };
+	  };
+
+	// Enable ASan annotations for memory obtained from std::allocator.
+	template<typename _Up>
+	  struct _Asan<allocator<_Up> >
+	  {
+	    typedef typename __gnu_cxx::__alloc_traits<_Char_alloc_type>
+	      ::size_type size_type;
+
+	    // Adjust ASan annotation for [_M_start, _M_end_of_storage) to
+	    // mark end of valid region as __curr instead of __prev.
+	    static void
+	    _S_adjust(basic_string& __str, pointer __prev, pointer __curr)
+	    {
+                    printf("Call: _S_adjust\n");
+                    printf("  obj: %p %p\n", &__str, (&__str) + 1);
+                    printf("  %p, %p\n", __prev, __curr);
+              if((void*)__str._M_data() > (void*)&__str && (void*)__str._M_data() < (void*)((&__str)+1)) { // TODO
+                printf("  short annotation\n");
+                __sanitizer_annotate_contiguous_container(&__str,
+                        &__str + 1, __prev + 1, __curr + 1);
+              }
+              else {
+                printf("  long annotation\n");
+                __sanitizer_annotate_contiguous_container(__str._M_data(),
+                        __str._M_data() + __str.capacity() + 1, __prev + 1, __curr + 1);
+              }
+	    }
+
+	    static void
+	    _S_grow(basic_string& __str, size_type __n)
+	    { _S_adjust(__str, __str._M_data() + __str.size(), __str._M_data() + __str.size() + __n); }
+
+	    static void
+	    _S_shrink(basic_string& __str, size_type __n)
+	    { _S_adjust(__str, __str._M_data() + __str.size() + __n, __str._M_data() + __str.size()); }
+
+	    static void
+	    _S_on_dealloc(basic_string& __str)
+	    {
+	      if (__str._M_data())
+		  _S_adjust(__str, __str._M_data() + __str.size(), __str._M_data() + __str.capacity());
+	    }
+
+	    // Used on reallocation to tell ASan unused capacity is invalid.
+	    struct _Reinit
+	    {
+	      explicit _Reinit(basic_string& __str) : _M_impl(__str)
+	      {
+		// Mark unused capacity as valid again before deallocating it.
+		_S_on_dealloc(_M_impl);
+	      }
+
+	      ~_Reinit()
+	      {
+		// Mark unused capacity as invalid after reallocation.
+		if (_M_impl._M_data())
+		  _S_adjust(_M_impl, _M_impl._M_data() + _M_impl.capacity(),
+			    _M_impl.end());
+	      }
+
+	      basic_string& _M_impl;
+
+#if __cplusplus >= 201103L
+	      _Reinit(const _Reinit&) = delete;
+	      _Reinit& operator=(const _Reinit&) = delete;
+#endif
+	    };
+
+	    // Tell ASan when unused capacity is initialized to be valid.
+	    struct _Grow
+	    {
+	      _Grow(basic_string& __impl, size_type __n)
+	      : _M_impl(__impl), _M_n(__n)
+	      { _S_grow(_M_impl, __n); }
+
+	      ~_Grow() { if (_M_n) _S_shrink(_M_impl, _M_n); }
+
+	      void _M_grew(size_type __n) { _M_n -= __n; }
+
+#if __cplusplus >= 201103L
+	      _Grow(const _Grow&) = delete;
+	      _Grow& operator=(const _Grow&) = delete;
+#endif
+	    private:
+	      basic_string& _M_impl;
+	      size_type _M_n;
+	    };
+	  };
+
+#define _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING \
+  typename basic_string::template _Asan<>::_Reinit const \
+	__attribute__((__unused__)) __reinit_guard(*this)
+#define _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(n) \
+  typename basic_string::template _Asan<>::_Grow \
+	__attribute__((__unused__)) __grow_guard(*this, (n))
+#define _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(n) __grow_guard._M_grew(n)
+#define _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(n) \
+  basic_string::template _Asan<>::_S_shrink(*this, n)
+#define _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC_STRING \
+  basic_string::template _Asan<>::_S_on_dealloc(*this)
+
+#else // ! (_GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_STRING)
+#define _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING
+#define _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(n)
+#define _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(n)
+#define _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(n)
+#define _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC_STRING
+#endif // _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_STRING
 
       void
       _M_data(pointer __p)
