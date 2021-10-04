@@ -750,7 +750,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 	    if (__builtin_expect(std::__addressof(__str) != this, true))
 	      {
                 size_type const __old_size = size();
-                size_type const __announced_grow = __str.size() > size() ? __str.size() - size() : 0;
+                size_type const __announced_grow = __str.size() > __old_size ? __str.size() - __old_size : 0;
                 _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(__announced_grow);
 		if (__str.size())
 		  this->_S_copy(_M_data(), __str._M_data(), __str.size());
@@ -783,7 +783,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
               else // _M_is_local
               {
                 // We want to unpoison object (local) memory,
-                // pointer and capacity will be sotred there.
+                // pointer and capacity will be stored there.
                 _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC_STRING;
               }
 

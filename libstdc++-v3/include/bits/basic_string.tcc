@@ -239,7 +239,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     void
     basic_string<_CharT, _Traits, _Alloc>::
     _M_construct(size_type __n, _CharT __c)
-    { 
+    {
       if (__n > size_type(_S_local_capacity))
 	{
 	  _M_data(_M_create(__n, size_type(0)));
@@ -435,7 +435,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     _M_replace_aux(size_type __pos1, size_type __n1, size_type __n2,
 		   _CharT __c)
     {
-      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING; // TODO
+      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING; // FIXME: Can this be done more optimally?
       _M_check_length(__n1, __n2, "basic_string::_M_replace_aux");
 
       const size_type __old_size = this->size();
@@ -922,7 +922,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     basic_string<_CharT, _Traits, _Alloc>::
     _M_mutate(size_type __pos, size_type __len1, size_type __len2)
     {
-      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING; // TODO?
+      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING; // // FIXME: Can this be done more optimally?
       const size_type __old_size = this->size();
       const size_type __new_size = __old_size + __len2 - __len1;
       const size_type __how_much = __old_size - __pos - __len1;

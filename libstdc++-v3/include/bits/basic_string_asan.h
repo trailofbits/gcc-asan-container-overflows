@@ -88,7 +88,6 @@
 #else
               if(__str._M_rep()->_M_is_shared())
                 return;
-              //if((void *)&__str < __prev && __prev < ((void *) (&__str + 1))) { // TODO: should be false? :thinking:
               if(false) {
 #endif
                 __sanitizer_annotate_contiguous_container(&__str,
