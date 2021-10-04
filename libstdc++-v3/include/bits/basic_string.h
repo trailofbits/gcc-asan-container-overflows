@@ -104,7 +104,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 
       ///  Value returned by various member functions when they fail.
       static const size_type	npos = static_cast<size_type>(-1);
-
+#include <bits/basic_string_asan.h>
     protected:
       // type used for positions in insert, erase etc.
 #if __cplusplus < 201103L
@@ -178,133 +178,6 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 	_CharT           _M_local_buf[_S_local_capacity + 1];
 	size_type        _M_allocated_capacity;
       };
-
-#if _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_STRING
-	template<typename = _Char_alloc_type>
-	  struct _Asan
-	  {
-	    typedef typename __gnu_cxx::__alloc_traits<_Char_alloc_type>
-	      ::size_type size_type;
-
-	    static void _S_shrink(basic_string&, size_type) { }
-	    static void _S_on_dealloc(basic_string&) { }
-
-	    typedef basic_string& _Reinit;
-
-	    struct _Grow
-	    {
-	      _Grow(basic_string&, size_type) { }
-	      void _M_grew(size_type) { }
-	    };
-	  };
-
-	// Enable ASan annotations for memory obtained from std::allocator.
-	template<typename _Up>
-	  struct _Asan<allocator<_Up> >
-	  {
-	    typedef typename __gnu_cxx::__alloc_traits<_Char_alloc_type>
-	      ::size_type size_type;
-
-	    // Adjust ASan annotation for [_M_start, _M_end_of_storage) to
-	    // mark end of valid region as __curr instead of __prev.
-	    static void
-	    _S_adjust(basic_string& __str, pointer __prev, pointer __curr)
-	    {
-                    printf("Call: _S_adjust\n");
-                    printf("  obj: %p %p\n", &__str, (&__str) + 1);
-                    printf("  %p, %p\n", __prev, __curr);
-              if((void*)__str._M_data() > (void*)&__str && (void*)__str._M_data() < (void*)((&__str)+1)) { // TODO
-                printf("  short annotation\n");
-                __sanitizer_annotate_contiguous_container(&__str,
-                        &__str + 1, __prev + 1, __curr + 1);
-              }
-              else {
-                printf("  long annotation\n");
-                __sanitizer_annotate_contiguous_container(__str._M_data(),
-                        __str._M_data() + __str.capacity() + 1, __prev + 1, __curr + 1);
-              }
-	    }
-
-	    static void
-	    _S_grow(basic_string& __str, size_type __n)
-	    { _S_adjust(__str, __str._M_data() + __str.size(), __str._M_data() + __str.size() + __n); }
-
-	    static void
-	    _S_shrink(basic_string& __str, size_type __n)
-	    { _S_adjust(__str, __str._M_data() + __str.size() + __n, __str._M_data() + __str.size()); }
-
-	    static void
-	    _S_on_dealloc(basic_string& __str)
-	    {
-	      if (__str._M_data())
-		  _S_adjust(__str, __str._M_data() + __str.size(), __str._M_data() + __str.capacity());
-	    }
-
-	    // Used on reallocation to tell ASan unused capacity is invalid.
-	    struct _Reinit
-	    {
-	      explicit _Reinit(basic_string& __str) : _M_impl(__str)
-	      {
-		// Mark unused capacity as valid again before deallocating it.
-		_S_on_dealloc(_M_impl);
-	      }
-
-	      ~_Reinit()
-	      {
-		// Mark unused capacity as invalid after reallocation.
-		if (_M_impl._M_data())
-		  _S_adjust(_M_impl, _M_impl._M_data() + _M_impl.capacity(),
-			    _M_impl.end());
-	      }
-
-	      basic_string& _M_impl;
-
-#if __cplusplus >= 201103L
-	      _Reinit(const _Reinit&) = delete;
-	      _Reinit& operator=(const _Reinit&) = delete;
-#endif
-	    };
-
-	    // Tell ASan when unused capacity is initialized to be valid.
-	    struct _Grow
-	    {
-	      _Grow(basic_string& __impl, size_type __n)
-	      : _M_impl(__impl), _M_n(__n)
-	      { _S_grow(_M_impl, __n); }
-
-	      ~_Grow() { if (_M_n) _S_shrink(_M_impl, _M_n); }
-
-	      void _M_grew(size_type __n) { _M_n -= __n; }
-
-#if __cplusplus >= 201103L
-	      _Grow(const _Grow&) = delete;
-	      _Grow& operator=(const _Grow&) = delete;
-#endif
-	    private:
-	      basic_string& _M_impl;
-	      size_type _M_n;
-	    };
-	  };
-
-#define _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING \
-  typename basic_string::template _Asan<>::_Reinit const \
-	__attribute__((__unused__)) __reinit_guard(*this)
-#define _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(n) \
-  typename basic_string::template _Asan<>::_Grow \
-	__attribute__((__unused__)) __grow_guard(*this, (n))
-#define _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(n) __grow_guard._M_grew(n)
-#define _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(n) \
-  basic_string::template _Asan<>::_S_shrink(*this, n)
-#define _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC_STRING \
-  basic_string::template _Asan<>::_S_on_dealloc(*this)
-
-#else // ! (_GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_STRING)
-#define _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING
-#define _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(n)
-#define _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(n)
-#define _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(n)
-#define _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC_STRING
-#endif // _GLIBCXX_SANITIZE_STD_ALLOCATOR && _GLIBCXX_SANITIZE_STRING
 
       void
       _M_data(pointer __p)
@@ -396,6 +269,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 	{
 	  typedef typename std::__is_integer<_InIterator>::__type _Integral;
 	  _M_construct_aux(__beg, __end, _Integral());
+          _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - size());
         }
 
       // For Input Iterators, used in istreambuf_iterators, etc.
@@ -563,7 +437,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
       basic_string()
       _GLIBCXX_NOEXCEPT_IF(is_nothrow_default_constructible<_Alloc>::value)
       : _M_dataplus(_M_local_data())
-      { _M_set_length(0); }
+      {
+        _M_set_length(0);
+        _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity());
+      }
 
       /**
        *  @brief  Construct an empty string using allocator @a a.
@@ -571,7 +448,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
       explicit
       basic_string(const _Alloc& __a) _GLIBCXX_NOEXCEPT
       : _M_dataplus(_M_local_data(), __a)
-      { _M_set_length(0); }
+      {
+        _M_set_length(0);
+        _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity());
+      }
 
       /**
        *  @brief  Construct string with copy of value of @a __str.
@@ -686,14 +566,23 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
       {
 	if (__str._M_is_local())
 	  {
+            _GLIBCXX_ASAN_ANNOTATE_REINIT_2STRING(__str);
 	    traits_type::copy(_M_local_buf, __str._M_local_buf,
 			      _S_local_capacity + 1);
+            
+	    // Must use _M_length() here not _M_set_length() because
+	    // basic_stringbuf relies on writing into unallocated capacity so
+	    // we mess up the contents if we put a '\0' in the string.
+	    _M_length(__str.length());
+	    __str._M_data(__str._M_local_data());
+	    __str._M_set_length(0);
+            _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity()-size());
 	  }
 	else
 	  {
 	    _M_data(__str._M_data());
 	    _M_capacity(__str._M_allocated_capacity);
-	  }
+
 
 	// Must use _M_length() here not _M_set_length() because
 	// basic_stringbuf relies on writing into unallocated capacity so
@@ -701,6 +590,8 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 	_M_length(__str.length());
 	__str._M_data(__str._M_local_data());
 	__str._M_set_length(0);
+            _GLIBCXX_ASAN_ANNOTATE_SHRINK_2STRING(__str, (__str.capacity() - __str.size()));
+	  }
       }
 
       /**
@@ -787,7 +678,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
        *  @brief  Destroy the string instance.
        */
       ~basic_string()
-      { _M_dispose(); }
+      {
+        _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC_STRING;
+        _M_dispose();
+      }
 
       /**
        *  @brief  Assign the value of @a str to this string.
@@ -840,6 +734,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 	    && _M_get_allocator() != __str._M_get_allocator())
 	  {
 	    // Destroy existing storage before replacing allocator.
+            _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING;
 	    _M_destroy(_M_allocated_capacity);
 	    _M_data(_M_local_data());
 	    _M_set_length(0);
@@ -854,9 +749,15 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 	    // char_traits::copy precondition that the ranges don't overlap).
 	    if (__builtin_expect(std::__addressof(__str) != this, true))
 	      {
+                size_type const __old_size = size();
+                size_type const __announced_grow = __str.size() > size() ? __str.size() - size() : 0;
+                _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(__announced_grow);
 		if (__str.size())
 		  this->_S_copy(_M_data(), __str._M_data(), __str.size());
+                _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(__announced_grow);
 		_M_set_length(__str.size());
+                if(__old_size > size())
+                  _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(__old_size - size());
 	      }
 	  }
 	else if (_Alloc_traits::_S_propagate_on_move_assign()
@@ -866,6 +767,7 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 	    // Just move the allocated pointer, our allocator can free it.
 	    pointer __data = nullptr;
 	    size_type __capacity;
+            _GLIBCXX_ASAN_ANNOTATE_STRING_COND(size_type __length;)
 	    if (!_M_is_local())
 	      {
 		if (_Alloc_traits::_S_always_equal())
@@ -873,10 +775,17 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 		    // __str can reuse our existing storage.
 		    __data = _M_data();
 		    __capacity = _M_allocated_capacity;
+                    _GLIBCXX_ASAN_ANNOTATE_STRING_COND(__length = length();)
 		  }
 		else // __str can't use it, so free it.
 		  _M_destroy(_M_allocated_capacity);
 	      }
+              else // _M_is_local
+              {
+                // We want to unpoison object (local) memory,
+                // pointer and capacity will be sotred there.
+                _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC_STRING;
+              }
 
 	    _M_data(__str._M_data());
 	    _M_length(__str.length());
@@ -885,9 +794,13 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 	      {
 		__str._M_data(__data);
 		__str._M_capacity(__capacity);
+                _GLIBCXX_ASAN_ANNOTATE_STRING_COND(__str._M_length(__length);)
 	      }
 	    else
+              {
 	      __str._M_data(__str._M_local_buf);
+                _GLIBCXX_ASAN_ANNOTATE_STRING_COND(__str._M_length(_S_local_capacity);)
+	  }
 	  }
 	else // Need to do a deep copy
 	  assign(__str);
@@ -1131,7 +1044,11 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
        */
       void
       clear() _GLIBCXX_NOEXCEPT
-      { _M_set_length(0); }
+        {
+          size_type __old_size = size();
+          _M_set_length(0);
+          _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(__old_size);
+        }
 
       /**
        *  Returns true if the %string is empty.  Equivalent to 
@@ -1460,9 +1377,14 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
       {
 	const size_type __size = this->size();
 	if (__size + 1 > this->capacity())
+          {
+            _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING;
 	  this->_M_mutate(__size, size_type(0), 0, size_type(1));
+          }
+        _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(1);
 	traits_type::assign(this->_M_data()[__size], __c);
 	this->_M_set_length(__size + 1);
+        _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(1);
       }
 
       /**
@@ -3504,7 +3426,7 @@ _GLIBCXX_END_NAMESPACE_CXX11
       // size that the allocator can hold.
       ///  Value returned by various member functions when they fail.
       static const size_type	npos = static_cast<size_type>(-1);
-
+#include <bits/basic_string_asan.h>
     private:
       // Data Members (private):
       mutable _Alloc_hider	_M_dataplus;
@@ -3703,7 +3625,7 @@ _GLIBCXX_END_NAMESPACE_CXX11
 #else
       : _M_dataplus(_S_construct(size_type(), _CharT(), _Alloc()), _Alloc())
 #endif
-      { }
+      { _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - size()); }
 
       /**
        *  @brief  Construct an empty string using allocator @a a.
@@ -3711,7 +3633,7 @@ _GLIBCXX_END_NAMESPACE_CXX11
       explicit
       basic_string(const _Alloc& __a)
       : _M_dataplus(_S_construct(size_type(), _CharT(), __a), __a)
-      { }
+      { _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - size()); }
 
       // NB: per LWG issue 42, semantics different from IS:
       /**
@@ -3765,7 +3687,7 @@ _GLIBCXX_END_NAMESPACE_CXX11
       basic_string(const _CharT* __s, size_type __n,
 		   const _Alloc& __a = _Alloc())
       : _M_dataplus(_S_construct(__s, __s + __n, __a), __a)
-      { }
+      { _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - size()); }
 
       /**
        *  @brief  Construct string as copy of a C string.
@@ -3780,7 +3702,7 @@ _GLIBCXX_END_NAMESPACE_CXX11
       basic_string(const _CharT* __s, const _Alloc& __a = _Alloc())
       : _M_dataplus(_S_construct(__s, __s ? __s + traits_type::length(__s) :
 				 __s + npos, __a), __a)
-      { }
+      { _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - size()); }
 
       /**
        *  @brief  Construct string as multiple characters.
@@ -3790,7 +3712,7 @@ _GLIBCXX_END_NAMESPACE_CXX11
        */
       basic_string(size_type __n, _CharT __c, const _Alloc& __a = _Alloc())
       : _M_dataplus(_S_construct(__n, __c, __a), __a)
-      { }
+      { _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - size()); }
 
 #if __cplusplus >= 201103L
       /**
@@ -3810,6 +3732,7 @@ _GLIBCXX_END_NAMESPACE_CXX11
 	__str._M_data(_S_empty_rep()._M_refdata());
 #else
 	__str._M_data(_S_construct(size_type(), _CharT(), get_allocator()));
+        _GLIBCXX_ASAN_ANNOTATE_SHRINK_2STRING(__str, __str.capacity() - __str.size());
 #endif
       }
 
@@ -3820,11 +3743,11 @@ _GLIBCXX_END_NAMESPACE_CXX11
        */
       basic_string(initializer_list<_CharT> __l, const _Alloc& __a = _Alloc())
       : _M_dataplus(_S_construct(__l.begin(), __l.end(), __a), __a)
-      { }
+      { _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - size()); }
 
       basic_string(const basic_string& __str, const _Alloc& __a)
       : _M_dataplus(__str._M_rep()->_M_grab(__a, __str.get_allocator()), __a)
-      { }
+      { _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - size()); }
 
       basic_string(basic_string&& __str, const _Alloc& __a)
       : _M_dataplus(__str._M_data(), __a)
@@ -3835,10 +3758,14 @@ _GLIBCXX_END_NAMESPACE_CXX11
 	    __str._M_data(_S_empty_rep()._M_refdata());
 #else
 	    __str._M_data(_S_construct(size_type(), _CharT(), __a));
+            _GLIBCXX_ASAN_ANNOTATE_SHRINK_2STRING(__str, __str.capacity() - __str.size());
 #endif
 	  }
 	else
+          {
 	  _M_dataplus._M_p = _S_construct(__str.begin(), __str.end(), __a);
+            _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - size());
+          }
       }
 #endif // C++11
 
@@ -3852,7 +3779,7 @@ _GLIBCXX_END_NAMESPACE_CXX11
         basic_string(_InputIterator __beg, _InputIterator __end,
 		     const _Alloc& __a = _Alloc())
 	: _M_dataplus(_S_construct(__beg, __end, __a), __a)
-	{ }
+	{ _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - size()); }
 
 #if __cplusplus >= 201703L
       /**
@@ -3882,7 +3809,10 @@ _GLIBCXX_END_NAMESPACE_CXX11
        *  @brief  Destroy the string instance.
        */
       ~basic_string() _GLIBCXX_NOEXCEPT
-      { _M_rep()->_M_dispose(this->get_allocator()); }
+      {
+        _GLIBCXX_ASAN_ANNOTATE_BEFORE_DEALLOC_STRING;
+        _M_rep()->_M_dispose(this->get_allocator());
+      }
 
       /**
        *  @brief  Assign the value of @a str to this string.
@@ -4176,7 +4106,11 @@ _GLIBCXX_END_NAMESPACE_CXX11
 	    _M_data(_S_empty_rep()._M_refdata());
 	  }
 	else
+          {
+            size_type __old_size = size();
 	  _M_rep()->_M_set_length_and_sharable(0);
+            _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(__old_size);
+          }
       }
 #else
       // PR 56166: this should not throw.
@@ -4500,8 +4434,10 @@ _GLIBCXX_END_NAMESPACE_CXX11
 	const size_type __len = 1 + this->size();
 	if (__len > this->capacity() || _M_rep()->_M_is_shared())
 	  this->reserve(__len);
+        _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(1);
 	traits_type::assign(_M_data()[this->size()], __c);
 	_M_rep()->_M_set_length_and_sharable(__len);
+        _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(1);
       }
 
       /**

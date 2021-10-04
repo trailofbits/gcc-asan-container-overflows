@@ -60,6 +60,8 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     {
       if (this == &__s)
 	return;
+      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING;
+      _GLIBCXX_ASAN_ANNOTATE_REINIT_2STRING(__s);
 
       _Alloc_traits::_S_on_swap(_M_get_allocator(), __s._M_get_allocator());
 
@@ -198,6 +200,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  }
 
 	_M_set_length(__len);
+        _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(__capacity - __len);
       }
 
   template<typename _CharT, typename _Traits, typename _Alloc>
@@ -236,7 +239,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     void
     basic_string<_CharT, _Traits, _Alloc>::
     _M_construct(size_type __n, _CharT __c)
-    {
+    { 
       if (__n > size_type(_S_local_capacity))
 	{
 	  _M_data(_M_create(__n, size_type(0)));
@@ -247,6 +250,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	this->_S_assign(_M_data(), __n, __c);
 
       _M_set_length(__n);
+      _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(capacity() - __n);
     }
 
   template<typename _CharT, typename _Traits, typename _Alloc>
@@ -256,6 +260,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     {
       if (this != &__str)
 	{
+          _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING;
 	  const size_type __rsize = __str.length();
 	  const size_type __capacity = capacity();
 
@@ -287,7 +292,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       // P0966 reserve should not shrink
       if (__res <= __capacity)
 	return;
-
+      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING;
       pointer __tmp = _M_create(__res, __capacity);
       this->_S_copy(__tmp, _M_data(), length() + 1);
       _M_dispose();
@@ -330,6 +335,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	this->_S_move(_M_data() + __pos, _M_data() + __pos + __n, __how_much);
 
       _M_set_length(length() - __n);
+      _GLIBCXX_ASAN_ANNOTATE_SHRINK_STRING(__n);
     }
 
   template<typename _CharT, typename _Traits, typename _Alloc>
@@ -340,6 +346,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       if (_M_is_local())
 	return;
 
+      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING;
       const size_type __length = length();
       const size_type __capacity = _M_allocated_capacity;
 
@@ -389,12 +396,20 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       if (__len <= this->capacity())
 	{
 	  if (__n)
+            {
+              _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(__n);
 	    this->_S_copy(this->_M_data() + this->size(), __s, __n);
+              this->_M_set_length(__len);
+              _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(__n);
+            }
 	}
       else
+        {
+          _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING;
 	this->_M_mutate(this->size(), size_type(0), __s, __n);
-
       this->_M_set_length(__len);
+        }
+
       return *this;
     }
 
@@ -420,6 +435,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     _M_replace_aux(size_type __pos1, size_type __n1, size_type __n2,
 		   _CharT __c)
     {
+      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING; // TODO
       _M_check_length(__n1, __n2, "basic_string::_M_replace_aux");
 
       const size_type __old_size = this->size();
@@ -449,6 +465,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     _M_replace(size_type __pos, size_type __len1, const _CharT* __s,
 	       const size_type __len2)
     {
+      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING; // TODO? Maybe we do not need that in place?
       _M_check_length(__len1, __len2, "basic_string::_M_replace");
 
       const size_type __old_size = this->size();
@@ -744,8 +761,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 		  __s = _M_data() + __off;
 		}
 	    }
+          _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(__n);
 	  _M_copy(_M_data() + this->size(), __s, __n);
 	  _M_rep()->_M_set_length_and_sharable(__len);
+          _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(__n);
 	}
       return *this;
     }
@@ -761,8 +780,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  const size_type __len = __size + this->size();
 	  if (__len > this->capacity() || _M_rep()->_M_is_shared())
 	    this->reserve(__len);
+          _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(__size);
 	  _M_copy(_M_data() + this->size(), __str._M_data(), __size);
 	  _M_rep()->_M_set_length_and_sharable(__len);
+          _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(__size);
 	}
       return *this;
     }    
@@ -779,8 +800,10 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  const size_type __len = __n + this->size();
 	  if (__len > this->capacity() || _M_rep()->_M_is_shared())
 	    this->reserve(__len);
+          _GLIBCXX_ASAN_ANNOTATE_GROW_STRING(__n);
 	  _M_copy(_M_data() + this->size(), __str._M_data() + __pos, __n);
 	  _M_rep()->_M_set_length_and_sharable(__len);	  
+          _GLIBCXX_ASAN_ANNOTATE_GREW_STRING(__n);	  
 	}
       return *this;
     }
@@ -899,6 +922,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     basic_string<_CharT, _Traits, _Alloc>::
     _M_mutate(size_type __pos, size_type __len1, size_type __len2)
     {
+      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING; // TODO?
       const size_type __old_size = this->size();
       const size_type __new_size = __old_size + __len2 - __len1;
       const size_type __how_much = __old_size - __pos - __len1;
@@ -947,6 +971,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
 	  __res = __capacity;
 	}
 
+      _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING;
       const allocator_type __a = get_allocator();
       _CharT* __tmp = _M_rep()->_M_clone(__a, __res - this->size());
       _M_rep()->_M_dispose(__a);
@@ -1137,6 +1162,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
       if (length() < capacity() || _M_rep()->_M_is_shared())
 	try
 	  {
+            _GLIBCXX_ASAN_ANNOTATE_REINIT_STRING;
 	    const allocator_type __a = get_allocator();
 	    _CharT* __tmp = _M_rep()->_M_clone(__a);
 	    _M_rep()->_M_dispose(__a);
@@ -1623,7 +1649,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
   // and earlier standards (so not C++20's starts_with and ends_with).
   // Suppress the explicit instantiation declarations for C++20, so C++20
   // code will implicitly instantiate std::string and std::wstring as needed.
-# if __cplusplus <= 201703L && _GLIBCXX_EXTERN_TEMPLATE > 0
+# if __cplusplus <= 201703L && _GLIBCXX_EXTERN_TEMPLATE > 0 && (!_GLIBCXX_SANITIZE_STRING || !_GLIBCXX_SANITIZE_STD_ALLOCATOR)
   extern template class basic_string<char>;
 # elif ! _GLIBCXX_USE_CXX11_ABI
   // Still need to prevent implicit instantiation of the COW empty rep,
@@ -1646,7 +1672,7 @@ _GLIBCXX_BEGIN_NAMESPACE_VERSION
     getline(basic_istream<char>&, string&);
 
 #ifdef _GLIBCXX_USE_WCHAR_T
-# if __cplusplus <= 201703L && _GLIBCXX_EXTERN_TEMPLATE > 0
+# if __cplusplus <= 201703L && _GLIBCXX_EXTERN_TEMPLATE > 0 && (!_GLIBCXX_SANITIZE_STRING || !_GLIBCXX_SANITIZE_STD_ALLOCATOR)
   extern template class basic_string<wchar_t>;
 # elif ! _GLIBCXX_USE_CXX11_ABI
   extern template basic_string<wchar_t>::size_type

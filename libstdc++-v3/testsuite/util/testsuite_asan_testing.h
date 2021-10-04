@@ -1,4 +1,5 @@
 #define _GLIBCXX_SANITIZE_DEQUE 1
+#define _GLIBCXX_SANITIZE_STRING 1
 #define __LIBCPP_VERIFY_ASAN_DEQUE_ANNOTATIONS 1
 
 #include <deque>
@@ -23,7 +24,11 @@ bool __is_string_short(S const &s)
 template <typename ChrT, typename TraitsT, typename Alloc>
 bool is_contiguous_container_asan_correct ( const std::basic_string<ChrT, TraitsT, Alloc> &c )
 {
-    if ( std::is_same<Alloc, std::allocator<ChrT> >::value && c.data() != NULL)
+    if (
+#if __cplusplus >= 201103L
+        std::is_same<Alloc, std::allocator<ChrT> >::value &&
+#endif
+        c.data() != NULL)
     {
         if(__is_string_short(c))
         {
