@@ -15,7 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-fsanitize=address" }
+// { dg-options "-fsanitize=address -D_GLIBCXX_USE_CXX11_ABI=0" }
 // { dg-do run }
 
 #include <cassert>
@@ -25,13 +25,15 @@
 template<typename S>
 void test()
 {
+    ASanVerify<S> verificator;
+
     S short_s(2, 'b');
     S long_s(1100, 'a');
 
     short_s.insert(1, 2, 'a');
     long_s.insert(10, 9, 'c');
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 
 #if __cplusplus >= 201103L && _GLIBCXX_USE_CXX11_ABI
     short_s.insert(short_s.cbegin() + 2, 'd');
@@ -41,32 +43,34 @@ void test()
     long_s.insert(long_s.begin() + 22, 'd');
 #endif
 
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 
 #if __cplusplus >=  201402L && _GLIBCXX_USE_CXX11_ABI
     short_s.insert(2, "silence", 2, 2);
     long_s.insert(2, "silenceeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", 22, 2);
 
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 
     short_s.insert(2, 1000, 'c');
 
-    assert(is_contiguous_container_asan_correct(short_s));
+    assert(verificator.add_and_verify(short_s));
 #endif
 }
 
 template<typename S>
 void test_simple()
 {
+    ASanVerify<S> verificator;
+
     S short_s(2, 'b');
     S long_s(1100, 'a');
 
     short_s.insert(1, 2, 'a');
     long_s.insert(10, 9, 'c');
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 
 #if __cplusplus >= 201103L && _GLIBCXX_USE_CXX11_ABI
     short_s.insert(short_s.cbegin() + 2, 'd');
@@ -76,8 +80,8 @@ void test_simple()
     long_s.insert(long_s.begin() + 22, 'd');
 #endif
 
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 }
 
 int main(int, char**)
@@ -107,6 +111,4 @@ int main(int, char**)
         test_simple<S>();
     }
 #endif
-
-    return 0;
 }

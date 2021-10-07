@@ -15,7 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-fsanitize=address" }
+// { dg-options "-fsanitize=address -D_GLIBCXX_USE_CXX11_ABI=0" }
 // { dg-do run }
 
 #include <cassert>
@@ -25,6 +25,8 @@
 template<typename S>
 void test()
 {
+    ASanVerify<S> verificator;
+
     S short_s, long_s;
 
     for(size_t i = 0; i < 1000; ++i)
@@ -37,18 +39,18 @@ void test()
 
     short_s.erase(short_s.begin());
     long_s.erase(long_s.begin());
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 
     short_s.erase(short_s.begin() + 1);
     long_s.erase(long_s.begin() + 1);
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 
     short_s.erase(1, 3);
     long_s.erase(30, 200);
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 }
 
 int main(int, char**)

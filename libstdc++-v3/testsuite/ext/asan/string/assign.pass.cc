@@ -15,7 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-fsanitize=address" }
+// { dg-options "-fsanitize=address -D_GLIBCXX_USE_CXX11_ABI=0" }
 // { dg-do run }
 
 #include <cassert>
@@ -25,52 +25,54 @@
 template<typename S>
 void test1()
 {
+    ASanVerify<S> verificator;
+
     S s1a, s1b, s1c = "def", s1d = "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
     s1a = "abc";
     s1b = "wopqdkopqwmdpoqwmdopqwmdopqwmopfqewopmtgopewmgopwemgopweopgopwemgopwemgopwemopgwepoegmpowemgpowemgopwemgopwemgopw";
 
-    assert(is_contiguous_container_asan_correct(s1a));
-    assert(is_contiguous_container_asan_correct(s1b));
-    assert(is_contiguous_container_asan_correct(s1c));
-    assert(is_contiguous_container_asan_correct(s1d));
+    verificator.add(s1a);
+    verificator.add(s1b);
+    verificator.add(s1c);
+    assert(verificator.add_and_verify(s1d));
 
     S s2a = s1a, s2b = s1b;
 
-    assert(is_contiguous_container_asan_correct(s2a));
-    assert(is_contiguous_container_asan_correct(s2b));
+    verificator.add(s2a);
+    verificator.add(s2b);
 
-    assert(is_contiguous_container_asan_correct(s1a));
-    assert(is_contiguous_container_asan_correct(s1b));
+    verificator.add(s1a);
+    assert(verificator.add_and_verify(s1b));
 
     S s3a, s3b;
     s3a = s1a;
     s3b = s1b;
 
-    assert(is_contiguous_container_asan_correct(s3a));
-    assert(is_contiguous_container_asan_correct(s3b));
+    verificator.add(s3a);
+    verificator.add(s3b);
 
-    assert(is_contiguous_container_asan_correct(s1a));
-    assert(is_contiguous_container_asan_correct(s1b));
+    verificator.add(s1a);
+    assert(verificator.add_and_verify(s1b));
  
     S s4;
     s4 = s1a + s1b;
 
-    assert(is_contiguous_container_asan_correct(s4));
+    verificator.add(s4);
 
-    assert(is_contiguous_container_asan_correct(s1a));
-    assert(is_contiguous_container_asan_correct(s1b));
+    verificator.add(s1a);
+    assert(verificator.add_and_verify(s1b));
 #if __cplusplus >= 201103L
     S s5a, s5b;
     s5a = std::move(s1c);
     s5b = std::move(s5b);
 
-    assert(is_contiguous_container_asan_correct(s5a));
-    assert(is_contiguous_container_asan_correct(s5b));
-    assert(is_contiguous_container_asan_correct(s1c));
+    verificator.add(s5a);
+    verificator.add(s5b);
+    assert(verificator.add_and_verify(s1c));
 #endif
     S s6;
     s6 = 'a';
-    assert(is_contiguous_container_asan_correct(s6));
+    assert(verificator.add_and_verify(s6));
 #if __cplusplus >= 201103L
     S s7a, s7b, s7c;
     s7a = { 'a', 'b'};
@@ -79,15 +81,17 @@ void test1()
 
     assert(s7c.size() > 8 * 3);
 
-    assert(is_contiguous_container_asan_correct(s7a));
-    assert(is_contiguous_container_asan_correct(s7b));
-    assert(is_contiguous_container_asan_correct(s7c));
+    verificator.add(s7a);
+    verificator.add(s7b);
+    assert(verificator.add_and_verify(s7c));
 #endif
 }
 
 template<typename S>
 void test2()
 {
+    ASanVerify<S> verificator;
+
     const char *ptr1 = "def";
     const char *ptr2 = "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
     const char *ptr3 = "abc";
@@ -102,54 +106,54 @@ void test2()
     s1a.assign(ptr1, ptr1+size1);
     s1b.assign(ptr2, ptr2+size2);
 
-    assert(is_contiguous_container_asan_correct(s1a));
-    assert(is_contiguous_container_asan_correct(s1b));
-    assert(is_contiguous_container_asan_correct(s1c));
-    assert(is_contiguous_container_asan_correct(s1d));
+    verificator.add(s1a);
+    verificator.add(s1b);
+    verificator.add(s1c);
+    assert(verificator.add_and_verify(s1d));
 
     S s2a, s2b;
     s2a.assign(s1a);
     s2b.assign(s1b);
 
-    assert(is_contiguous_container_asan_correct(s2a));
-    assert(is_contiguous_container_asan_correct(s2b));
+    verificator.add(s2a);
+    verificator.add(s2b);
 
-    assert(is_contiguous_container_asan_correct(s1a));
-    assert(is_contiguous_container_asan_correct(s1b));
+    verificator.add(s1a);
+    assert(verificator.add_and_verify(s1b));
 
     S s3a, s3b;
     s3a.assign(s1a.data(), s1a.data() + s1a.size());
     s3b.assign(s1b.data(), s1b.data() + s1b.size());
 
-    assert(is_contiguous_container_asan_correct(s3a));
-    assert(is_contiguous_container_asan_correct(s3b));
+    verificator.add(s3a);
+    assert(verificator.add_and_verify(s3b));
 
     S s4;
     s4.assign(s1a + s1b);
 
-    assert(is_contiguous_container_asan_correct(s4));
+    verificator.add(s4);
 
-    assert(is_contiguous_container_asan_correct(s1a));
-    assert(is_contiguous_container_asan_correct(s1b));
+    verificator.add(s1a);
+    assert(verificator.add_and_verify(s1b));
 #if __cplusplus >= 201103L
     S s5a, s5b;
     s5a.assign(std::move(s1c));
     s5b.assign(std::move(s1d));
 
-    assert(is_contiguous_container_asan_correct(s5a));
-    assert(is_contiguous_container_asan_correct(s5b));
+    verificator.add(s5a);
+    verificator.add(s5b);
 
-    assert(is_contiguous_container_asan_correct(s1c));
-    assert(is_contiguous_container_asan_correct(s1d));
+    verificator.add(s1c);
+    assert(verificator.add_and_verify(s1d));
  #endif
     S s6a, s6b, s6c;
     s6a.assign(ptr1);
     s6b.assign(ptr2);
     s6c.assign("ce");
 
-    assert(is_contiguous_container_asan_correct(s6a));
-    assert(is_contiguous_container_asan_correct(s6b));
-    assert(is_contiguous_container_asan_correct(s6c));
+    verificator.add(s6a);
+    verificator.add(s6b);
+    assert(verificator.add_and_verify(s6c));
 #if __cplusplus >= 201103L
     S s7a, s7b, s7c;
     s7a.assign({ 'a', 'b'});
@@ -158,9 +162,9 @@ void test2()
 
     assert(s7c.size() > 8 * 3);
 
-    assert(is_contiguous_container_asan_correct(s7a));
-    assert(is_contiguous_container_asan_correct(s7b));
-    assert(is_contiguous_container_asan_correct(s7c));
+    verificator.add(s7a);
+    verificator.add(s7b);
+    assert(verificator.add_and_verify(s7c));
 #endif
 
     S s8a, s8b, s8c, s8d;
@@ -176,13 +180,13 @@ void test2()
     s8d.assign(s1b.rbegin(), s1b.rend());
 #endif
 
-    assert(is_contiguous_container_asan_correct(s8a));
-    assert(is_contiguous_container_asan_correct(s8b));
-    assert(is_contiguous_container_asan_correct(s8c));
-    assert(is_contiguous_container_asan_correct(s8d));
+    verificator.add(s8a);
+    verificator.add(s8b);
+    verificator.add(s8c);
+    verificator.add(s8d);
 
-    assert(is_contiguous_container_asan_correct(s1a));
-    assert(is_contiguous_container_asan_correct(s1b));
+    verificator.add(s1a);
+    assert(verificator.add_and_verify(s1b));
  
     S& s9a = s1a, s9b = s1b;
 #if __cplusplus >= 201103L
@@ -193,11 +197,11 @@ void test2()
     s9b.assign(s1b.begin() + 4, s1b.begin() + 10);
 #endif
 
-    assert(is_contiguous_container_asan_correct(s9a));
-    assert(is_contiguous_container_asan_correct(s9b));
+    verificator.add(s9a);
+    verificator.add(s9b);
 
-    assert(is_contiguous_container_asan_correct(s1a));
-    assert(is_contiguous_container_asan_correct(s1b)); 
+    verificator.add_and_verify(s1a);
+    assert(verificator.add_and_verify(s1b)); 
 }
 
 template<typename S>
@@ -213,27 +217,4 @@ int main(int, char**)
         typedef std::string S;
         test<S>();
     }
-/*
-    {
-        typedef std::wstring S;
-        test<S>();
-    }
-#if __cplusplus >= 202011L
-    {
-        typedef std::u8string S;
-        test<S>();
-    }
-#endif
-#if __cplusplus >= 201103L
-    {
-        typedef std::u16string S;
-        test<S>();
-    }
-    {
-        typedef std::u32string S;
-        test<S>();
-    }
-#endif
-*/
-    return 0;
 }

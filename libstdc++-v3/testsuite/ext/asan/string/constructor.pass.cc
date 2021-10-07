@@ -35,47 +35,49 @@ T emove(T &obj) {
 
 template<typename S>
 void test_basic() {
+    ASanVerify<S> verificator;
+
     // Empty string
     S s1;
-    assert(is_contiguous_container_asan_correct(s1));
+    verificator.add(s1);
 
     //
     S s2a = "a", s2b = "bb", s2c = "ccc";
-    assert(is_contiguous_container_asan_correct(s2a));
-    assert(is_contiguous_container_asan_correct(s2b));
-    assert(is_contiguous_container_asan_correct(s2c));
+    verificator.add(s2a);
+    verificator.add(s2b);
+    assert(verificator.add_and_verify(s2c));
 
     S s3a = "1234567890123456789012";
     assert(s3a.size() == 22);
     S s3b = "1234567890";
     assert(s3b.size() == 10);
 
-    assert(is_contiguous_container_asan_correct(s3a));
-    assert(is_contiguous_container_asan_correct(s3b));
+    verificator.add(s3a);
+    assert(verificator.add_and_verify(s3b));
 
 
     S s4 = "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqwwwwwwwwwwwwwwwwwwwweeeeeeeeeeeeeeeee";
 
     assert(s4.size() > 8 * 4);
-    assert(is_contiguous_container_asan_correct(s4));
+    assert(verificator.add_and_verify(s4));
 
     S s5a(1, 'a'), s5b(3, 'c'), s5c(1000, 'q');
 
-    assert(is_contiguous_container_asan_correct(s5a));
-    assert(is_contiguous_container_asan_correct(s5b));
-    assert(is_contiguous_container_asan_correct(s5c));
+    verificator.add(s5a);
+    verificator.add(s5b);
+    assert(verificator.add_and_verify(s5c));
 
     S s6a(s5c.data()+3, s5c.data()+5), s6b(s4.data(), s4.data()+22), s6c(s5c.data(), s5c.data()+999);
 
-    assert(is_contiguous_container_asan_correct(s6a));
-    assert(is_contiguous_container_asan_correct(s6b));
-    assert(is_contiguous_container_asan_correct(s6c));
+    verificator.add(s6a);
+    verificator.add(s6b);
+    assert(verificator.add_and_verify(s6c));
 
     // That test case was failing with old ABI,
     // while all above were passing.
     S s7a(11100, 'b');
 
-    assert(is_contiguous_container_asan_correct(s7a));
+    assert(verificator.add_and_verify(s7a));
 }
 
 template<typename S>
@@ -88,16 +90,19 @@ S get_s(size_t n, char c = 'a')
     return s;
 }
 
+
 template<typename S>
 void test()
 {
+    ASanVerify<S> verificator;
+
     S short_s1a(get_s<S>(1)), short_s1b = get_s<S>(1, 'b');
     S long_s1a(get_s<S>(91, 'c')), long_s1b = get_s<S>(91);
 
-    assert(is_contiguous_container_asan_correct(short_s1a));
-    assert(is_contiguous_container_asan_correct(short_s1b));
-    assert(is_contiguous_container_asan_correct(long_s1a));
-    assert(is_contiguous_container_asan_correct(long_s1b));
+    verificator.add(short_s1a);
+    verificator.add(short_s1b);
+    verificator.add(long_s1a);
+    assert(verificator.add_and_verify(long_s1b));
 #if __cplusplus >= 201103L
     S short_s2a(std::move(short_s1a)), short_s2b = std::move(short_s1b);
     S long_s2a(std::move(long_s1a)), long_s2b = std::move(long_s1b);
@@ -105,28 +110,28 @@ void test()
     S short_s2a(emove(short_s1a)), short_s2b = emove(short_s1b);
     S long_s2a(emove(long_s1a)), long_s2b = emove(long_s1b);
 #endif
-    assert(is_contiguous_container_asan_correct(short_s2a));
-    assert(is_contiguous_container_asan_correct(short_s2b));
-    assert(is_contiguous_container_asan_correct(long_s2a));
-    assert(is_contiguous_container_asan_correct(long_s2b));
+    verificator.add(short_s2a);
+    verificator.add(short_s2b);
+    verificator.add(long_s2a);
+    verificator.add(long_s2b);
 
-    assert(is_contiguous_container_asan_correct(short_s1a));
-    assert(is_contiguous_container_asan_correct(short_s1b));
-    assert(is_contiguous_container_asan_correct(long_s1a));
-    assert(is_contiguous_container_asan_correct(long_s1b));
+    verificator.add(short_s1a);
+    verificator.add(short_s1b);
+    verificator.add(long_s1a);
+    assert(verificator.add_and_verify(long_s1b));
 
     S short_s3a(short_s2a), short_s3b = short_s2b;
     S long_s3a(long_s2a), long_s3b = long_s2b;
 
-    assert(is_contiguous_container_asan_correct(short_s3a));
-    assert(is_contiguous_container_asan_correct(short_s3b));
-    assert(is_contiguous_container_asan_correct(long_s3a));
-    assert(is_contiguous_container_asan_correct(long_s3b));
+    verificator.add(short_s3a);
+    verificator.add(short_s3b);
+    verificator.add(long_s3a);
+    verificator.add(long_s3b);
 
-    assert(is_contiguous_container_asan_correct(short_s2a));
-    assert(is_contiguous_container_asan_correct(short_s2b));
-    assert(is_contiguous_container_asan_correct(long_s2a));
-    assert(is_contiguous_container_asan_correct(long_s2b));
+    verificator.add(short_s2a);
+    verificator.add(short_s2b);
+    verificator.add(long_s2a);
+    assert(verificator.add_and_verify(long_s2b));
 
     typedef typename S::value_type value_type;
     value_type a = value_type('a');
@@ -134,15 +139,15 @@ void test()
     S short_s4(1, a);
     S long_s4(91, a);
 
-    assert(is_contiguous_container_asan_correct(short_s4));
-    assert(is_contiguous_container_asan_correct(long_s4));
+    verificator.add(short_s4);
+    assert(verificator.add_and_verify(long_s4));
 
     S short_s5(long_s4.begin(), long_s4.begin() + 1);
     S long_s5(long_s4.rbegin(), long_s4.rbegin() + 81);
 
-    assert(is_contiguous_container_asan_correct(short_s5));
-    assert(is_contiguous_container_asan_correct(long_s5));
-    assert(is_contiguous_container_asan_correct(long_s4));
+    verificator.add(short_s5);
+    verificator.add(long_s5);
+    assert(verificator.add_and_verify(long_s4));
 
 #if __cplusplus >= 201103L
     S short_s6({short_s5[0]});
@@ -153,10 +158,10 @@ void test()
         long_s5[1], long_s5[2], long_s5[3], long_s5[4], long_s5[5], long_s5[6],
     });
 
-    assert(is_contiguous_container_asan_correct(short_s6));
-    assert(is_contiguous_container_asan_correct(long_s6));
-    assert(is_contiguous_container_asan_correct(short_s5));
-    assert(is_contiguous_container_asan_correct(long_s5));
+    verificator.add(short_s6);
+    verificator.add(long_s6);
+    verificator.add(short_s5);
+    assert(verificator.add_and_verify(long_s5));
 #endif
 }
 

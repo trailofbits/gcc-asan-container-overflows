@@ -15,7 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-fsanitize=address" }
+// { dg-options "-fsanitize=address -D_GLIBCXX_USE_CXX11_ABI=0" }
 // { dg-do run }
 
 #include <cassert>
@@ -25,6 +25,8 @@
 template<typename S>
 void test1()
 {
+    ASanVerify<S> verificator;
+
     S empty_s;
     S short_s(3, 'b');
     S long_s(1100, 'a');
@@ -33,25 +35,25 @@ void test1()
     short_s.append(empty_s);
     long_s.append(empty_s);
 
-    assert(is_contiguous_container_asan_correct(empty_s));
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add_and_verify(empty_s);
+    verificator.add_and_verify(short_s);
+    assert(verificator.add_and_verify(long_s));
 
     empty_s.append("ab");
     short_s.append(short_s);
     long_s.append(short_s);
 
-    assert(is_contiguous_container_asan_correct(empty_s));
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add_and_verify(empty_s);
+    verificator.add_and_verify(short_s);
+    assert(verificator.add_and_verify(long_s));
 
     S &not_empty_s = empty_s;
     short_s.append(empty_s);
     long_s.append(long_s);
 
-    assert(is_contiguous_container_asan_correct(not_empty_s));
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add_and_verify(not_empty_s);
+    verificator.add_and_verify(short_s);
+    assert(verificator.add_and_verify(long_s));
 
 
 }
@@ -59,6 +61,8 @@ void test1()
 template<typename S>
 void test2()
 {
+    ASanVerify<S> verificator;
+
     S empty_s;
     S short_s(3, 'b');
     S long_s(1100, 'a');
@@ -67,25 +71,25 @@ void test2()
     short_s += empty_s;
     long_s += empty_s;
 
-    assert(is_contiguous_container_asan_correct(empty_s));
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add_and_verify(empty_s);
+    verificator.add_and_verify(short_s);
+    assert(verificator.add_and_verify(long_s));
 
     empty_s += "ab";
     short_s += short_s;
     long_s += short_s;
 
-    assert(is_contiguous_container_asan_correct(empty_s));
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add_and_verify(empty_s);
+    verificator.add_and_verify(short_s);
+    assert(verificator.add_and_verify(long_s));
 
     S &not_empty_s = empty_s;
     short_s += not_empty_s;
     long_s += long_s;
 
-    assert(is_contiguous_container_asan_correct(not_empty_s));
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add_and_verify(not_empty_s);
+    verificator.add_and_verify(short_s);
+    assert(verificator.add_and_verify(long_s));
 }
 
 template<typename S>
@@ -101,27 +105,4 @@ int main(int, char**)
         typedef std::string S;
         test<S>();
     }
-/*
-    {
-        typedef std::wstring S;
-        test<S>();
-    }
-#if __cplusplus >= 202011L
-    {
-        typedef std::u8string S;
-        test<S>();
-    }
-#endif
-#if __cplusplus >= 201103L
-    {
-        typedef std::u16string S;
-        test<S>();
-    }
-    {
-        typedef std::u32string S;
-        test<S>();
-    }
-#endif
-*/
-    return 0;
 }

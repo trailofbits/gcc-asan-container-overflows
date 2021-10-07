@@ -15,7 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-fsanitize=address" }
+// { dg-options "-fsanitize=address -D_GLIBCXX_USE_CXX11_ABI=0" }
 // { dg-do run }
 
 #include <cassert>
@@ -24,23 +24,21 @@
 
 template<typename S>
 void test() {
+    ASanVerify<S> verificator;
+
     S s;
-#if _GLIBCXX_USE_CXX11_ABI
-    while(s.size() < 1000000)
-#else
-    while(s.size() < 10000)
-#endif
+    while(s.size() < 100)
     {
         s.push_back('c');
 
-        assert(is_contiguous_container_asan_correct(s));
+        assert(verificator.add_and_verify(s));
     }
 #if __cplusplus >= 201103L
     while(s.size() > 0)
     {
         s.pop_back();
 
-        assert(is_contiguous_container_asan_correct(s));
+        assert(verificator.add_and_verify(s));
     }
 #endif
 }
@@ -72,5 +70,4 @@ int main(int, char**)
         test<S>();
     }
 #endif
-    return 0;
 }

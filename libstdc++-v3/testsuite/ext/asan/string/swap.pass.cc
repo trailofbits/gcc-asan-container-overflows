@@ -15,7 +15,7 @@
 // with this library; see the file COPYING3.  If not see
 // <http://www.gnu.org/licenses/>.
 
-// { dg-options "-fsanitize=address" }
+// { dg-options "-fsanitize=address -D_GLIBCXX_USE_CXX11_ABI=0" }
 // { dg-do run }
 
 #include <cassert>
@@ -25,6 +25,8 @@
 template<typename S>
 void test()
 {
+    ASanVerify<S> verificator;
+
     S empty_s;
     S short_s(3, 'b');
     S long_s(1100, 'a');
@@ -32,49 +34,49 @@ void test()
     std::swap(empty_s, empty_s);
     std::swap(short_s, short_s);
     std::swap(long_s, long_s);
-    assert(is_contiguous_container_asan_correct(empty_s));
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(empty_s);
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 
     std::swap(empty_s, short_s);
-    assert(is_contiguous_container_asan_correct(empty_s));
-    assert(is_contiguous_container_asan_correct(short_s));
+    verificator.add(empty_s);
+    assert(verificator.add_and_verify(short_s));
 
     std::swap(empty_s, short_s);
-    assert(is_contiguous_container_asan_correct(empty_s));
-    assert(is_contiguous_container_asan_correct(short_s));
+    verificator.add(empty_s);
+    assert(verificator.add_and_verify(short_s));
 
     std::swap(empty_s, long_s);
-    assert(is_contiguous_container_asan_correct(empty_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(empty_s);
+    assert(verificator.add_and_verify(long_s));
 
     std::swap(empty_s, long_s);
-    assert(is_contiguous_container_asan_correct(empty_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(empty_s);
+    assert(verificator.add_and_verify(long_s));
 
     std::swap(short_s, long_s);
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 
     std::swap(short_s, long_s);
-    assert(is_contiguous_container_asan_correct(short_s));
-    assert(is_contiguous_container_asan_correct(long_s));
+    verificator.add(short_s);
+    assert(verificator.add_and_verify(long_s));
 
     S long_s2(11100, 'b');
 
     std::swap(long_s, long_s2);
-    assert(is_contiguous_container_asan_correct(long_s));
-    assert(is_contiguous_container_asan_correct(long_s2));
+    verificator.add(long_s);
+    assert(verificator.add_and_verify(long_s2));
 
     std::swap(long_s, long_s2);
-    assert(is_contiguous_container_asan_correct(long_s));
-    assert(is_contiguous_container_asan_correct(long_s2));
+    verificator.add(long_s);
+    assert(verificator.add_and_verify(long_s2));
 
     S long_s3(111, 'b');
 
     std::swap(long_s, long_s3);
-    assert(is_contiguous_container_asan_correct(long_s));
-    assert(is_contiguous_container_asan_correct(long_s2));
+    verificator.add(long_s);
+    assert(verificator.add_and_verify(long_s2));
 }
 
 int main(int, char**)
