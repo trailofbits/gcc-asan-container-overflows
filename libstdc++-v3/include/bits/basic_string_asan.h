@@ -83,16 +83,15 @@
               if(sizeof(__str)%SHADOW_GRANULARITY != 0 || ((unsigned long long)&__str) % SHADOW_GRANULARITY != 0)
 #endif
                 return;
+
 #if _GLIBCXX_USE_CXX11_ABI
-              if(__str._M_is_local()) {
+              if(__str._M_is_local())
+                __sanitizer_annotate_contiguous_container(&__str,
+                  &__str + 1, __prev + 1, __curr + 1);
 #else
               if(__str._M_rep()->_M_is_shared())
                 return;
-              if(false) {
 #endif
-                __sanitizer_annotate_contiguous_container(&__str,
-                        &__str + 1, __prev + 1, __curr + 1);
-             }
               else {
                 __sanitizer_annotate_contiguous_container(__str._M_data(),
                         __str._M_data() + __str.capacity() + 1, __prev + 1, __curr + 1);
