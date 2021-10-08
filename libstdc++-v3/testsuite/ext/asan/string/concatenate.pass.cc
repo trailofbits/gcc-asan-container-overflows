@@ -25,7 +25,10 @@
 template<typename S>
 void test() {
     S empty_s;
-    S short_s("asd");
+    S short_s;
+    short_s.push_back('a');
+    short_s.push_back('s');
+    short_s.push_back('d');
     S long_s(1100, 'a');
 
     assert(is_contiguous_container_asan_correct(empty_s + empty_s));
@@ -48,7 +51,6 @@ int main(int, char**)
         typedef std::string S;
         test<S>();
     }
-/*
     {
         typedef std::wstring S;
         test<S>();
@@ -69,6 +71,4 @@ int main(int, char**)
         test<S>();
     }
 #endif
-*/
-    return 0;
 }

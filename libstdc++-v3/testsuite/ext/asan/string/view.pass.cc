@@ -38,8 +38,12 @@ void test()
     assert(is_contiguous_container_asan_correct(short_s));
     assert(is_contiguous_container_asan_correct(long_s));
 
-    std::string_view partial_short_v(short_s.data() + 1, 1);
-    std::string_view partial_long_v(long_s.data() + 10, 200);
+    assert(is_contiguous_container_asan_correct(empty_v));
+    assert(is_contiguous_container_asan_correct(short_v));
+    assert(is_contiguous_container_asan_correct(long_v));
+
+    std::string_view partial_short_v(short_s.data() + 0, 1);
+    std::string_view partial_long_v(long_s.data() + 8, 200);
 
     assert(is_contiguous_container_asan_correct(short_s));
     assert(is_contiguous_container_asan_correct(long_s));
@@ -51,27 +55,4 @@ int main(int, char**)
         typedef std::string S;
         test<S>();
     }
-/*
-    {
-        typedef std::wstring S;
-        test<S>();
-    }
-#if __cplusplus >= 202011L
-    {
-        typedef std::u8string S;
-        test<S>();
-    }
-#endif
-#if __cplusplus >= 201103L
-    {
-        typedef std::u16string S;
-        test<S>();
-    }
-    {
-        typedef std::u32string S;
-        test<S>();
-    }
-#endif
-*/
-    return 0;
 }

@@ -40,6 +40,18 @@ int main(int, char**)
         typedef std::basic_string<char, std::char_traits<char>, min_allocator<char>> S;
         S s;
         assert(is_contiguous_container_asan_correct(s));
+
+        s.reserve(10000);
+        for(size_t i = 0; i < 100; ++i) {
+            s.push_back('a');
+            assert(is_contiguous_container_asan_correct(s));
+        }
+        // Memory should not be poisoned at all.
+        assert(s.capacity() > s.size());
+        assert(__sanitizer_verify_contiguous_container(s.data(), s.data() + s.capacity(), s.data() + s.capacity()));
+
+        s.clear();
+        assert(is_contiguous_container_asan_correct(s));
     }
 #endif
 

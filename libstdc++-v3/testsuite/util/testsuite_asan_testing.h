@@ -36,6 +36,13 @@
 #define _GLIBCXX_SANITIZE_STRING 1
 #define __LIBCPP_VERIFY_ASAN_DEQUE_ANNOTATIONS 1
 
+#ifndef SHADOW_SCALE
+#define SHADOW_SCALE (3U)
+#endif
+#ifndef SHADOW_GRANULARITY
+#define SHADOW_GRANULARITY (1UL << SHADOW_SCALE)
+#endif
+
 #include <deque>
 #include <string>
 #include <vector>
@@ -61,23 +68,47 @@ bool is_contiguous_container_asan_correct ( const std::basic_string<ChrT, Traits
 {
     if (
 #if __cplusplus >= 201103L
-        std::is_same<Alloc, std::allocator<ChrT> >::value &&
+        !std::is_same<Alloc, std::allocator<ChrT> >::value ||
 #endif
-        c.data() != NULL)
-    {
-        if(__is_string_short(c))
+        c.data() == NULL)
+          // In that case, string is not annotated at all.
+          // We can check it here, but for that we have separated test,
+          // and maybe in some cases, one may want to poison memory in different way.
+          return true;
+    
+      if(__is_string_short(c))
         {
-            if(sizeof(void*) == 8)
-                return __sanitizer_verify_contiguous_container (
-                    &c, c.data() + c.size() + 1, &c + 1) != 0;
-            else
-                return true;
-        }
-        else
+          if(sizeof(c) % SHADOW_GRANULARITY == 0 && ((unsigned long long)&c) % SHADOW_GRANULARITY == 0)
             return __sanitizer_verify_contiguous_container (
+              &c, c.data() + c.size() + 1, &c + 1) != 0;
+            else
+              return true;
+        }
+      else
+        return __sanitizer_verify_contiguous_container (
                 c.data(), c.data() + c.size() + 1, c.data() + c.capacity()+1) != 0;
-    }
-    return true;
+}
+
+template <typename ChrT, typename TraitsT>
+bool is_contiguous_container_asan_correct ( const std::basic_string_view<ChrT, TraitsT> &c )
+{
+      if(c.data() == NULL || ((unsigned long long)c.data()) % SHADOW_GRANULARITY != 0)
+          // In that case, we cannot call __sanitizer_verify_contiguous_container.
+          // Fail does not mean that annotations are incorrect in that case,
+          // but we return it to indicate that check didn't happen.
+          return false;
+    
+      if(__is_string_short(c))
+        {
+          if(sizeof(c) % SHADOW_GRANULARITY == 0 && ((unsigned long long)&c) % SHADOW_GRANULARITY == 0)
+            return __sanitizer_verify_contiguous_container (
+              &c, c.data() + c.size(), &c) != 0;
+            else
+              return true;
+        }
+      else
+        return __sanitizer_verify_contiguous_container (
+                c.data(), c.data() + c.size(), c.data() + c.size()) != 0;
 }
 
 template<typename S>

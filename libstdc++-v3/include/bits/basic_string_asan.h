@@ -78,9 +78,9 @@
 	    _S_adjust(basic_string& __str, pointer __prev, pointer __curr)
 	    {
 #if __cplusplus >= 202011L
-              if(sizeof(__str)%8 != 0 || ((uintptr_t)&__str) % 8 != 0)
+              if(sizeof(__str)%SHADOW_GRANULARITY != 0 || ((uintptr_t)&__str) % SHADOW_GRANULARITY != 0)
 #else
-              if(sizeof(__str)%8 != 0 || ((unsigned long long)&__str) % 8 != 0)
+              if(sizeof(__str)%SHADOW_GRANULARITY != 0 || ((unsigned long long)&__str) % SHADOW_GRANULARITY != 0)
 #endif
                 return;
 #if _GLIBCXX_USE_CXX11_ABI

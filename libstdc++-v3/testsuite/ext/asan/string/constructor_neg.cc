@@ -39,27 +39,4 @@ int main(int, char**)
         typedef std::string S;
         test<S>(2);
     }
-/*
-    {
-        typedef std::wstring S;
-        test<S>();
-    }
-#if __cplusplus >= 202011L
-    {
-        typedef std::u8string S;
-        test<S>();
-    }
-#endif
-#if __cplusplus >= 201103L
-    {
-        typedef std::u16string S;
-        test<S>();
-    }
-    {
-        typedef std::u32string S;
-        test<S>();
-    }
-#endif
-*/
-    return 0;
 }

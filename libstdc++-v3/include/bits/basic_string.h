@@ -54,6 +54,13 @@ __sanitizer_annotate_contiguous_container(const void*, const void*,
 					  const void*, const void*);
 #endif
 
+#ifndef SHADOW_SCALE
+#define SHADOW_SCALE (3U)
+#endif
+#ifndef SHADOW_GRANULARITY
+#define SHADOW_GRANULARITY (1UL << SHADOW_SCALE)
+#endif
+
 namespace std _GLIBCXX_VISIBILITY(default)
 {
 _GLIBCXX_BEGIN_NAMESPACE_VERSION
@@ -569,7 +576,14 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
             _GLIBCXX_ASAN_ANNOTATE_REINIT_2STRING(__str);
 	    traits_type::copy(_M_local_buf, __str._M_local_buf,
 			      _S_local_capacity + 1);
-            
+
+            // Logic is duplicated in else block.
+            // That logic could be outside of if/else, if not ASan annotations.
+            // _GLIBCXX_ASAN_ANNOTATE_REINIT_2STRING creates objech, which
+            // destructor has to be called after __str has set length
+            // and data. Because of performance reason, it cannot be
+            // used outside of if.
+
 	    // Must use _M_length() here not _M_set_length() because
 	    // basic_stringbuf relies on writing into unallocated capacity so
 	    // we mess up the contents if we put a '\0' in the string.
@@ -768,6 +782,10 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 	    pointer __data = nullptr;
 	    size_type __capacity;
             _GLIBCXX_ASAN_ANNOTATE_STRING_COND(size_type __length;)
+            // Above variable is created only when ASan is turned on.
+            // It is used to set correct __str length later on, as
+            // clear (with ASan) cannot be called on incorrect object.
+            // Length is use to poison only necessary part of memory.
 	    if (!_M_is_local())
 	      {
 		if (_Alloc_traits::_S_always_equal())
@@ -795,11 +813,13 @@ _GLIBCXX_BEGIN_NAMESPACE_CXX11
 		__str._M_data(__data);
 		__str._M_capacity(__capacity);
                 _GLIBCXX_ASAN_ANNOTATE_STRING_COND(__str._M_length(__length);)
+                // We have to set length due to poisonin in clear() later on.
 	      }
 	    else
               {
-	      __str._M_data(__str._M_local_buf);
+	        __str._M_data(__str._M_local_buf);
                 _GLIBCXX_ASAN_ANNOTATE_STRING_COND(__str._M_length(_S_local_capacity);)
+                // We have to set length due to poisonin in clear() later on.
 	  }
 	  }
 	else // Need to do a deep copy
